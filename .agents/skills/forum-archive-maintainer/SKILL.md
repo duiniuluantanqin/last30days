@@ -15,6 +15,7 @@ description: 维护本仓库的论坛采集、标题与正文黑名单、图片�
 - 图片隐藏：检查 `site.py` 的构建处理和 `templates/post.html`、`index.html`。仅改变公开展示，保持数据库原始归档可重建；同步更新剩余图片数量、图片提示和必要的摘要文字。具体条件以 README 与当前测试为准。
 - Block：检查 `static/keyword-menu.js` 和 `templates/base.html`。关键词集中追加到 `blacklist/keywords.txt`；不要恢复逐词创建哈希文件的流程。普通 HTTP 不提供 `crypto.subtle` 和现代 Clipboard API，复制兼容处理不可仅在 localhost 验证。
 - 历史文章清理或发布：检查 `site.py`、`scripts/remote.py`、`scripts/purge-blocked.sh` 和 `archive.yml`。黑名单变更须先应用到恢复的服务器数据库，再生成新站点和删除清单；旧 HTML 通过数字帖子 ID 精确删除。源站访问失败不能阻止已完成的下架。不要把公开输出目录或 Actions 缓存当权威数据库。
+- 流水线采集仅由 `schedule` 事件执行；push 和 `workflow_dispatch` 事件只恢复 ECS 状态、重筛、构建和清理发布。不要让手动任务或合并关键词 PR 触发源站采集。
 
 ## 验证
 

@@ -6,11 +6,6 @@ on:
   schedule:
     - cron: '17 * * * *'
   workflow_dispatch:
-    inputs:
-      cleanup_only:
-        description: '只清理过期和黑名单帖子并发布，不抓取新帖'
-        type: boolean
-        default: false
 permissions:
   contents: read
 concurrency:
@@ -38,12 +33,12 @@ jobs:
       - run: python -m pip install -e .
       - name: Restore authoritative state from ECS
         run: python scripts/remote.py restore
-      - name: Apply blacklist and 30-day retention before fetching new posts
+      - name: Apply blacklist and 30-day retention and publish
         run: |
           python -m forum_archive build --path-file .cache/release.txt
           python scripts/remote.py publish
       - name: Collect posts (partial failures are retried next time)
-        if: inputs.cleanup_only != true
+        if: github.event_name == 'schedule'
         id: crawl
         shell: bash
         run: |
@@ -54,13 +49,13 @@ jobs:
           fi
           echo "result=$result" >> "$GITHUB_OUTPUT"
       - name: Generate release
-        if: inputs.cleanup_only != true
+        if: github.event_name == 'schedule'
         run: python -m forum_archive build --path-file .cache/release.txt
       - name: Publish website and durable state
-        if: inputs.cleanup_only != true
+        if: github.event_name == 'schedule'
         run: python scripts/remote.py publish
       - name: Report partial collection failures
-        if: steps.crawl.outputs.result == '2'
+        if: github.event_name == 'schedule' && steps.crawl.outputs.result == '2'
         run: |
           echo "::error::部分帖子采集失败；成功内容和重试状态已保存到 ECS，下一轮继续。"
           exit 1
