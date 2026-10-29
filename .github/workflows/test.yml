@@ -9,6 +9,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Update sensitive word lists from upstream main
+        run: |
+          git submodule update --init --remote --depth 1 -- third_party/multilingual-sensitive-words
+          git -C third_party/multilingual-sensitive-words rev-parse HEAD
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'

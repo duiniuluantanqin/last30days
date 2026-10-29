@@ -10,6 +10,12 @@
 
 需要 Python 3.11+。本项目已用 Python 3.14 本地验证，Actions 使用 Python 3.12。
 
+首次取得代码后，先初始化词库子模块（否则会提示词库文件缺失）：
+
+```powershell
+git submodule update --init --depth 1 -- third_party/multilingual-sensitive-words
+```
+
 如果安装了 uv：
 
 ```powershell
@@ -50,11 +56,33 @@ python -m venv .venv
 ## Linux
 
 ```bash
+git submodule update --init --depth 1 -- third_party/multilingual-sensitive-words
 python3 -m venv .venv
 .venv/bin/python -m pip install -e .
 .venv/bin/python -m forum_archive crawl --max-posts 3 --recent-pages 1 --backfill-pages 1
 .venv/bin/python -m forum_archive serve --port 8766
 ```
+
+## 上游色情与广告词库
+
+使用 [yxpil/multilingual-sensitive-words](https://github.com/yxpil/multilingual-sensitive-words) 的 `main` 分支作为 Git submodule，目录为 `third_party/multilingual-sensitive-words`。仅加载以下两个文件：
+
+| 类别 | 文件 |
+|---|---|
+| 色情类 | `data/sensitive-words/sw_色情类.txt` |
+| 广告类 | `data/sensitive-words/sw_广告.txt` |
+
+上游词库、`config.toml` 的 `blocked_keywords` 和本项目 `blacklist/*.txt` 会合并、规范化并去重，继续按**标题包含词**匹配。其他上游分类不加载。上游文件路径在 `[filter].keyword_files` 中指定；缺失时程序会报错，不会静默跳过。网页 `Block` 提交仍写入本项目的 `blacklist/`，不修改上游子模块。
+
+`archive.yml` 和 `test.yml` 都会先检出子模块，再执行以下更新命令；因此定时、push、PR 测试、手动执行和 `cleanup_only` 运行都会使用上游 `main` 的最新词库，并记录实际 commit SHA：
+
+```bash
+git submodule update --init --remote --depth 1 -- third_party/multilingual-sensitive-words
+```
+
+在本地手动执行同一命令即可更新词库。流水线更新不会自动向本项目提交子模块指针；如果上游没有新提交，运行使用的版本保持不变。词库拉取失败会终止该轮任务，成功后再对已有文章应用新规则、删除命中页面。只有上游数据被读取，不执行该子模块中的程序。
+
+词库按上游 Apache-2.0 许可使用，原许可证保留在子模块中。提交本次改动时需要同时包含 `.gitmodules` 和 `third_party/multilingual-sensitive-words` 的子模块指针；首次克隆也可使用 `git clone --recurse-submodules`。
 
 ## 配置与采集行为
 
@@ -68,6 +96,7 @@ python3 -m venv .venv
 - `crawl.max_attempts`：主帖最大跨轮重试次数，默认 3；耗尽后仍保留错误记录。人工重试：`python -m forum_archive crawl --retry-failed`。
 - `filter.blocked_keywords`：标题包含词；会先统一全半角、英文大小写，去掉空白和零宽格式字符。
 - `filter.blocked_patterns`：作用于规范化标题的正则表达式。默认不启用；无效正则会在启动时报告。
+- `filter.keyword_files`：额外的本地逐行词库文件，路径相对于配置文件目录；当前只指定上游色情类和广告类。
 - `site`：网站名称、说明和每页数量。
 - `storage`：SQLite 状态与生成网站的目录，路径相对于配置文件所在目录。
 
@@ -97,7 +126,7 @@ python3 -m venv .venv
 
 `config.toml` 的 `[site]` 中配置 `github_repository = "owner/repo"` 和 `github_branch = "默认分支名"`。当前已按仓库 origin 配置为 `duiniuluantanqin/last30days`、`master`；更换仓库或分支时同步修改。仓库留空会隐藏此功能。
 
-选择长度限制为 1–80 个字符，换行合并为空格；已被现有包含词规则覆盖、超长或不支持的选词不显示按钮。点击空白处、滚动或按 Escape 可关闭。网页正式部署需要 HTTPS（本地 localhost/127.0.0.1 也可用）。
+选择长度限制为 1–80 个字符，换行合并为空格；已被现有包含词规则覆盖或超长的选词不显示按钮。点击空白处、滚动或按 Escape 可关闭。普通 HTTP（包括公网 IP 地址）和 HTTPS 都支持；没有 Web Crypto 的 HTTP 页面使用本地 SHA-256 计算文件名，结果与 HTTPS 一致。
 
 **已有 Caddy 配置也需要同步更新 CSP：** 在 `Content-Security-Policy` 中增加 `script-src 'self'`，参考 `deploy/Caddyfile.example`。这里只允许加载本网站的脚本，不需要放开内联脚本或 GitHub API 请求。修改 Caddy 配置后验证并重载；本地预览服务修改代码后也应重启。
 
@@ -108,6 +137,7 @@ python3 -m venv .venv
 ```text
 config.toml                      来源、黑名单与运行预算
 blacklist/*.txt                   通过 PR 增加的黑名单关键词
+third_party/multilingual-sensitive-words/  自动更新的上游词库子模块
 forum_archive/                   采集、状态、渲染与本地预览
 forum_archive/templates/         阅读页模板
 forum_archive/static/            仅 CSS，无图片资源下载
@@ -131,6 +161,8 @@ SQLite 包含结构化正文与状态，是权威归档，需要备份。公开�
 覆盖标题规则、真实页面结构的时间戳、来源版块限制、主帖与回复分离、正文清理、懒加载原图链接、零图片请求、去重、失败重试、历史扫描边界、robots 限速和重新筛选后的旧页面下线。
 
 可选浏览器检查需要在执行该命令的 Python 环境中安装 Playwright 和可用的 Chromium/Chrome。先启动演示预览，再运行 `python tests/browser_keyword_menu.py --url http://127.0.0.1:8765/`。检查实际鼠标划词、GitHub 链接、重复词、长度限制和手机弹窗位置，不向 GitHub 提交任何内容。
+
+追加 `--http-origin` 可将本地页面映射到普通 HTTP 测试来源，验证 Chrome 中 `isSecureContext=false`、无 `crypto.subtle` 时的 `Block` 菜单及文件名计算；同时校验中文、emoji 和多块输入的 SHA-256 结果。
 
 ## GitHub Actions 与 ECS（本地测试不会执行部署）
 

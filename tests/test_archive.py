@@ -98,6 +98,54 @@ class ArchiveTests(unittest.TestCase):
         self.assertTrue(settings.filters.blocks("包含另一个词的标题"))
         self.assertFalse(settings.filters.blocks("不是黑名单词"))
 
+    def test_selected_external_word_lists_merge_with_local_keywords(self):
+        root = self.settings.root
+        upstream = root / "third_party/words/data/sensitive-words"
+        upstream.mkdir(parents=True)
+        (upstream / "sw_色情类.txt").write_text("\ufeff色情测试\nDUPLICATE\n\n", encoding="utf-8")
+        (upstream / "sw_广告.txt").write_text("  广告测试  \n", encoding="utf-8")
+        (upstream / "sw_政治类.txt").write_text("其他分类测试\n", encoding="utf-8")
+        local = root / "blacklist"
+        local.mkdir()
+        (local / "custom.txt").write_text("自定义词\nduplicate\n", encoding="utf-8")
+        config = root / "config.toml"
+        config.write_text('[source]\nlist_url = "' + SOURCE + '"\n[filter]\n'
+                          'blocked_keywords = ["本地词", "ＤＵＰＬＩＣＡＴＥ"]\n'
+                          'keyword_files = ["third_party/words/data/sensitive-words/sw_色情类.txt", '
+                          '"third_party/words/data/sensitive-words/sw_广告.txt"]\n', encoding="utf-8")
+        settings = Settings.load(config)
+        for title in ("本地词", "色情测试", "广告测试", "自定义词", "duplicate"):
+            self.assertTrue(settings.filters.blocks("包含" + title + "的标题"))
+        self.assertFalse(settings.filters.blocks("其他分类测试"))
+        self.assertEqual(settings.filters.keywords.count("duplicate"), 1)
+        self.assertNotIn("", settings.filters.keywords)
+
+    def test_missing_external_word_list_fails_with_initialization_hint(self):
+        config = self.settings.root / "config.toml"
+        config.write_text('[source]\nlist_url = "' + SOURCE + '"\n[filter]\n'
+                          'keyword_files = ["third_party/not-initialized/words.txt"]\n', encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "git submodule update --init"):
+            Settings.load(config)
+
+    def test_updated_external_keywords_remove_previously_collected_article(self):
+        root = self.settings.root
+        config = root / "config.toml"
+        config.write_text('[source]\nlist_url = "' + SOURCE + '"\n[filter]\n'
+                          'keyword_files = ["upstream.txt"]\n', encoding="utf-8")
+        word_file = root / "upstream.txt"
+        word_file.write_text("其他词\n", encoding="utf-8")
+        before = Settings.load(config)
+        with Store(before, NOW) as store:
+            store.discover(Thread("101", SOURCE, "新增广告词讨论", NOW.isoformat()), NOW)
+            store.save_post("101", Post("新增广告词讨论", NOW.isoformat(), "<p>正文</p>", "正文", 0), NOW, False)
+        first = build(before, now=NOW)
+        self.assertTrue((first / "posts/101.html").is_file())
+        word_file.write_text("其他词\n新增广告词\n", encoding="utf-8")
+        second = build(Settings.load(config), now=NOW)
+        self.assertFalse((first / "posts/101.html").exists())
+        self.assertFalse((second / "posts/101.html").exists())
+        self.assertNotIn("新增广告词讨论", (second / "index.html").read_text(encoding="utf-8"))
+
     def test_keyword_menu_has_safe_repository_configuration(self):
         self.settings.site = replace(self.settings.site, github_repository="example/archive", github_branch="feature/rules")
         self.settings.filters = TitleFilter(["原有词", "</div><script>bad()</script>"])

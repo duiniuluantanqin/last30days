@@ -40,7 +40,8 @@ class TitleFilter:
     blocked_patterns: list[str] = field(default_factory=list)
 
     def __post_init__(self):
-        self.keywords = [normalize_title(word) for word in self.blocked_keywords if word.strip()]
+        self.keywords = list(dict.fromkeys(normalized for word in self.blocked_keywords
+                                          if (normalized := normalize_title(word))))
         self.patterns = [re.compile(pattern, re.IGNORECASE) for pattern in self.blocked_patterns]
 
     def blocks(self, title: str) -> bool:
@@ -100,6 +101,11 @@ class Settings:
         filters = dict(raw.get("filter", {}))
         keywords = list(filters.get("blocked_keywords", []))
         for keyword_file in sorted((root / "blacklist").glob("*.txt")):
+            keywords.extend(keyword_file.read_text(encoding="utf-8-sig").splitlines())
+        for filename in filters.pop("keyword_files", []):
+            keyword_file = root / filename
+            if not keyword_file.is_file():
+                raise ValueError(f"词库文件不存在：{filename}；请运行 git submodule update --init 或检查配置")
             keywords.extend(keyword_file.read_text(encoding="utf-8-sig").splitlines())
         filters["blocked_keywords"] = keywords
         return cls(root, source, crawl, TitleFilter(**filters), site,

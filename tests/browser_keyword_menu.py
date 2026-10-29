@@ -14,8 +14,11 @@ from playwright.sync_api import sync_playwright
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--url", default="http://127.0.0.1:8765/")
+    parser.add_argument("--http-origin", action="store_true", help="以非 localhost 的普通 HTTP 来源测试，无 Web Crypto")
     args = parser.parse_args()
     origin = urlsplit(args.url)
+    browser_url = "http://archive.test/" if args.http_origin else args.url
+    browser_origin = urlsplit(browser_url)
     output = Path(".cache/screenshots")
     output.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as playwright:
@@ -24,12 +27,25 @@ def main():
         browser = playwright.chromium.launch(headless=True, **options)
         context = browser.new_context(viewport={"width": 1440, "height": 1050})
         # A local check must not load third-party images or navigate to GitHub.
-        context.route("**/*", lambda route: route.continue_() if urlsplit(route.request.url).netloc == origin.netloc else route.fulfill(status=200, content_type="text/html", body="External navigation intercepted by local test"))
+        def route_request(route):
+            requested = urlsplit(route.request.url)
+            if requested.netloc == browser_origin.netloc:
+                if args.http_origin:
+                    local_url = origin._replace(path=requested.path, query=requested.query, fragment="").geturl()
+                    route.fulfill(response=route.fetch(url=local_url))
+                else:
+                    route.continue_()
+            else:
+                route.fulfill(status=200, content_type="text/html", body="External navigation intercepted by local test")
+
+        context.route("**/*", route_request)
         page = context.new_page()
         errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))
         page.on("console", lambda message: errors.append(message.text) if "Content Security Policy" in message.text else None)
-        page.goto(args.url, wait_until="networkidle")
+        page.goto(browser_url, wait_until="networkidle")
+        if args.http_origin:
+            assert page.evaluate("!window.isSecureContext && !window.crypto?.subtle")
         page.locator(".article-info h2 a").first.click()
         paragraph = page.locator(".prose p").first
         box = paragraph.bounding_box()
@@ -37,7 +53,7 @@ def main():
         page.mouse.down()
         page.mouse.move(box["x"] + 250, box["y"] + 12, steps=15)
         page.mouse.up()
-        page.wait_for_selector("#keyword-menu .keyword-submit:not([hidden])")
+        page.wait_for_selector("#keyword-menu .keyword-submit:not([hidden])", timeout=5000)
         menu = page.locator("#keyword-menu")
         word = page.evaluate("getSelection().toString().trim().replace(/\\s+/gu, ' ')")
         assert word
@@ -91,6 +107,10 @@ def main():
         page.wait_for_selector("#keyword-menu .keyword-submit:not([hidden])")
         check_link('读者 "建议" <script> 第二行')
         assert page.locator("#keyword-menu script").count() == 0
+        for vector in ("abc", "x" * 55, "x" * 56, "x" * 64, "x" * 80, "测" * 80, "😀" * 80):
+            select_text(vector)
+            page.wait_for_selector("#keyword-menu .keyword-submit:not([hidden])", timeout=5000)
+            check_link(vector)
         page.set_viewport_size({"width": 390, "height": 844})
         page.wait_for_timeout(150)  # Let resize/scroll events settle before a new selection.
         select_text("家庭服务器")
@@ -104,7 +124,7 @@ def main():
         assert menu.is_hidden()
         assert not errors, errors
         browser.close()
-    print(json.dumps({"mouse_selection": "pass", "github_link": "pass", "duplicate_word": "pass", "length_limit": "pass", "mobile": "pass", "submitted_to_github": False}))
+    print(json.dumps({"http_origin": args.http_origin, "mouse_selection": "pass", "github_link": "pass", "sha256_vectors": "pass", "duplicate_word": "pass", "length_limit": "pass", "mobile": "pass", "submitted_to_github": False}))
 
 
 if __name__ == "__main__":
