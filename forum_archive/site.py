@@ -1,0 +1,122 @@
+from collections import defaultdict
+from datetime import datetime
+from functools import partial
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+import json
+from pathlib import Path
+import shutil
+from uuid import uuid4
+from zoneinfo import ZoneInfo
+
+from bs4 import BeautifulSoup
+from jinja2 import Environment, FileSystemLoader, select_autoescape
+
+from .config import Settings
+from .store import Store
+
+
+PACKAGE = Path(__file__).parent
+
+
+def build(settings: Settings, *, now: datetime | None = None) -> Path:
+    now = now or datetime.now(ZoneInfo(settings.source.timezone))
+    with Store(settings, now) as store:
+        store.apply_filter(settings.filters)
+        articles = store.articles()
+        last_success = store.get("last_success_at")
+    settings.output.mkdir(parents=True, exist_ok=True)
+    # Public files should inherit the website directory's read permissions.
+    # mkdtemp uses owner-only permissions, which breaks a separate preview/Caddy user.
+    release = settings.output / f"release-{uuid4().hex}"
+    release.mkdir()
+    (release / "posts").mkdir()
+    (release / "archive").mkdir()
+    shutil.copytree(PACKAGE / "static", release / "assets")
+    env = Environment(loader=FileSystemLoader(PACKAGE / "templates"), autoescape=select_autoescape(["html"]))
+    env.filters["date"] = lambda value, fmt="%m-%d %H:%M": datetime.fromisoformat(value).strftime(fmt) if value else "尚未更新"
+    groups = defaultdict(list)
+    for article in articles:
+        content = BeautifulSoup(article["body_html"], "html.parser")
+        if "防水图" in content.get_text():
+            for image in content.select("img"):
+                image.decompose()
+            article["body_html"] = str(content)
+            article["image_count"] = 0
+        groups[article["published_at"][:7]].append(article)
+    months = sorted(groups, reverse=True)
+    common = dict(site=settings.site, total=len(articles), months=months, last_success=last_success,
+                  source_url=settings.source.list_url, generated_at=now.isoformat())
+
+    def write(path, template, **context):
+        (release / path).write_text(env.get_template(template).render(**common, **context), encoding="utf-8")
+
+    def listing(items, *, month=None):
+        size = settings.site.page_size
+        pages = max(1, (len(items) + size - 1) // size)
+        for page in range(1, pages + 1):
+            if month:
+                filename = f"archive/{month}.html" if page == 1 else f"archive/{month}-{page}.html"
+                link = lambda number: f"/archive/{month}.html" if number == 1 else f"/archive/{month}-{number}.html"
+            else:
+                filename = "index.html" if page == 1 else f"page-{page}.html"
+                link = lambda number: "/" if number == 1 else f"/page-{number}.html"
+            write(filename, "index.html", articles=items[(page - 1) * size:page * size],
+                  month=month, page=page, pages=pages,
+                  previous=link(page - 1) if page > 1 else None,
+                  next_page=link(page + 1) if page < pages else None)
+
+    listing(articles)
+    for month in months:
+        listing(groups[month], month=month)
+    for article in articles:
+        write(f"posts/{article['id']}.html", "post.html", article=article, month=article["published_at"][:7])
+    write("404.html", "404.html", month=None)
+    # Never copy the SQLite state or source pages into the public release.
+    manifest = settings.output / "current.json"
+    temporary = settings.output / "current.json.tmp"
+    temporary.write_text(json.dumps({"release": release.name}, ensure_ascii=False), encoding="utf-8")
+    temporary.replace(manifest)
+    return release
+
+
+def current_release(output: Path) -> Path:
+    manifest = json.loads((output / "current.json").read_text(encoding="utf-8"))
+    path = (output / manifest["release"]).resolve()
+    if path.parent != output.resolve() or not path.is_dir():
+        raise ValueError("无效的网站版本目录")
+    return path
+
+
+class ArchiveHandler(SimpleHTTPRequestHandler):
+    def __init__(self, *args, output: Path, **kwargs):
+        self.output = output
+        super().__init__(*args, directory=str(current_release(output)), **kwargs)
+
+    def do_GET(self):
+        self.directory = str(current_release(self.output))
+        super().do_GET()
+
+    def do_HEAD(self):
+        self.directory = str(current_release(self.output))
+        super().do_HEAD()
+
+    def list_directory(self, path):
+        self.send_error(404)
+        return None
+
+    def end_headers(self):
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'self'; img-src https: http:; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")
+        super().end_headers()
+
+
+def serve(settings: Settings, host: str, port: int):
+    current_release(settings.output)
+    handler = partial(ArchiveHandler, output=settings.output)
+    with ThreadingHTTPServer((host, port), handler) as server:
+        print(f"本地预览：http://{host}:{port}（Ctrl+C 停止）", flush=True)
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            pass

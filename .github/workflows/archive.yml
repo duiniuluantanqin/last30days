@@ -1,0 +1,51 @@
+name: Hourly archive
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: forum-archive-publish
+  cancel-in-progress: false
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+      DEPLOY_ROOT: ${{ vars.DEPLOY_ROOT || '/srv/forum-archive' }}
+      DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: python -m pip install -e .
+      - name: Restore authoritative state from ECS
+        run: python scripts/remote.py restore
+      - name: Collect posts (partial failures are retried next time)
+        id: crawl
+        shell: bash
+        run: |
+          result=0
+          python -m forum_archive crawl || result=$?
+          if [ "$result" -ne 0 ] && [ "$result" -ne 2 ]; then
+            exit "$result"
+          fi
+          echo "result=$result" >> "$GITHUB_OUTPUT"
+      - name: Generate release
+        run: python -m forum_archive build --path-file .cache/release.txt
+      - name: Publish website and durable state
+        run: python scripts/remote.py publish
+      - name: Report partial collection failures
+        if: steps.crawl.outputs.result == '2'
+        run: |
+          echo "::error::部分帖子采集失败；成功内容和重试状态已保存到 ECS，下一轮继续。"
+          exit 1

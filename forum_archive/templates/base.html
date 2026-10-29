@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>{% block title %}{{ site.title }} · 讨论归档{% endblock %}</title>
+  <meta name="description" content="{{ site.description }}">
+  <link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">跳到正文</a>
+  <div class="layout">
+    <aside class="sidebar" aria-label="网站导航">
+      <a class="brand" href="/" aria-label="{{ site.title }}首页"><span class="brand-mark" aria-hidden="true">拾</span><span>{{ site.title }}</span></a>
+      <p class="tagline">{{ site.description }}</p>
+      <nav><a class="nav-link {% if not month %}active{% endif %}" href="/">全部讨论 <span>{{ total }}</span></a></nav>
+      {% if months %}<div class="archive-nav"><p class="nav-label">按月翻阅</p>
+      {% for item in months %}<a class="month-link {% if month == item %}active{% endif %}" href="/archive/{{ item }}.html">{{ item[:4] }} 年 {{ item[5:] }} 月 <span aria-hidden="true">↗</span></a>{% endfor %}
+      </div>{% endif %}
+      <div class="sidebar-note"><span class="small-dot" aria-hidden="true"></span>{{ site.subtitle }}<br><a href="{{ source_url }}" target="_blank" rel="noopener noreferrer nofollow">查看来源版块 ↗</a></div>
+    </aside>
+    <div class="main-column">
+      <header class="topbar"><a href="/">讨论归档</a><span>{% if last_success %}更新于 {{ last_success|date('%m-%d %H:%M') }}{% else %}等待首次更新{% endif %}</span></header>
+      <main id="main">{% block content %}{% endblock %}</main>
+      <footer><span>{{ site.title }} · 个人讨论归档</span><span>按标题规则收录 · 图片使用原链接</span></footer>
+    </div>
+  </div>
+</body>
+</html>

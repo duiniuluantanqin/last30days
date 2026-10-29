@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}{% if month %}{{ month }} 归档{% else %}全部讨论{% endif %} · {{ site.title }}{% endblock %}
+{% block content %}
+<section class="page-heading"><div><p class="eyebrow">{% if month %}月份归档{% else %}阅读清单{% endif %}</p><h1>{% if month %}{{ month[:4] }} 年 {{ month[5:] }} 月{% else %}最近的讨论<span class="heading-dot">。</span>{% endif %}</h1></div><p class="page-count">第 {{ page }} / {{ pages }} 页</p></section>
+{% if articles %}
+<div class="article-list">
+{% for article in articles %}
+<article class="article-row">
+  <time class="article-date" datetime="{{ article.published_at }}"><span>{{ article.published_at|date('%m.%d') }}</span>{{ article.published_at|date('%H:%M') }}</time>
+  <div class="article-info"><h2><a href="/posts/{{ article.id }}.html">{{ article.title }}</a></h2><p class="excerpt">{{ article.summary or '打开阅读原帖内容。' }}</p><div class="article-meta"><span>技术讨论</span>{% if article.image_count %}<span>{{ article.image_count }} 张外链图片</span>{% endif %}</div></div>
+  <a class="row-arrow" href="/posts/{{ article.id }}.html" aria-label="阅读：{{ article.title }}">↗</a>
+</article>
+{% endfor %}
+</div>
+<nav class="pagination" aria-label="翻页">{% if previous %}<a href="{{ previous }}">← 上一页</a>{% else %}<span>已经是第一页</span>{% endif %}{% if next_page %}<a href="{{ next_page }}">下一页 →</a>{% else %}<span>已经是最后一页</span>{% endif %}</nav>
+{% else %}<section class="empty-state"><span class="empty-mark" aria-hidden="true">页</span><h2>这里还没有收录的讨论</h2><p>完成首次采集后，文章会出现在这里。</p></section>{% endif %}
+{% endblock %}

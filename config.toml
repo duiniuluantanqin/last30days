@@ -1,0 +1,33 @@
+[source]
+list_url = "https://t66y.com/thread0806.php?fid=7"
+timezone = "Asia/Shanghai"
+request_interval_seconds = 2.0
+timeout_seconds = 25
+retries = 2
+max_response_bytes = 4000000
+respect_robots = true
+user_agent = "ForumArchive/0.1 (personal text archive; no image downloads)"
+
+[crawl]
+initial_days = 30
+overlap_hours = 48
+recent_pages_per_run = 5
+backfill_pages_per_run = 5
+max_posts_per_run = 60
+max_attempts = 3
+
+[filter]
+# Only titles are checked. These examples are intentionally conservative;
+# customize them for your own inclusion criteria. Bodies/images are NOT classified.
+blocked_keywords = ["色情", "成人视频", "约炮", "約炮", "裸聊", "AV片", "av女优", "av女優", "援交", "招嫖", "性爱", "性愛", "淫乱", "淫亂", "裸照", "露点", "露點"]
+blocked_patterns = []
+
+[site]
+title = "拾页"
+subtitle = "技术讨论 · 每小时更新"
+description = "把值得阅读的讨论，留在这里。"
+page_size = 20
+
+[storage]
+database = "data/archive.sqlite3"
+output = "site"

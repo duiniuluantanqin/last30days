@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "forum-archive"
+version = "0.1.0"
+description = "A title-filtered forum archive with hourly collection and a static reading site"
+requires-python = ">=3.11"
+dependencies = [
+    "beautifulsoup4>=4.13,<5",
+    "bleach>=6.2,<7",
+    "httpx>=0.28,<0.29",
+    "Jinja2>=3.1.6,<4",
+    "tzdata>=2025.1; sys_platform == 'win32'",
+]
+
+[project.scripts]
+forum-archive = "forum_archive.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["forum_archive*"]
+
+[tool.setuptools.package-data]
+forum_archive = ["templates/*.html", "static/*"]
