@@ -198,7 +198,7 @@ class ArchiveTests(unittest.TestCase):
         menu = page.select_one("#keyword-menu")
         self.assertIsNotNone(menu)
         self.assertEqual(menu["data-repository"], "example/archive")
-        self.assertEqual(menu["data-branch"], "feature/rules")
+        self.assertNotIn("data-branch", menu.attrs)
         self.assertEqual(json.loads(menu["data-keywords"]), self.settings.filters.keywords)
         scripts = page.select("script")
         self.assertEqual(len(scripts), 1)

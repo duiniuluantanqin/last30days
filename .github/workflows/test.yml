@@ -16,4 +16,8 @@ jobs:
           cache-dependency-path: pyproject.toml
       - run: python -m pip install -e .
       - run: python -m unittest discover -s tests -v
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test tests/test_block_keyword_pr.cjs
       - run: python -m forum_archive demo

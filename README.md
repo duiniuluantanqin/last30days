@@ -62,7 +62,7 @@ python3 -m venv .venv
 
 关键词统一维护在 `blacklist/keywords.txt`，包括原配置、旧 Block 文件、补充的色情和广告话术，以及原第三方词库中色情、广告两类规则的本地副本。按**标题或正文包含词**匹配，任一命中就屏蔽整篇。
 
-第三方 Git 子模块已移除，本地运行和 GitHub Actions 都直接读取仓库内的词库，不再拉取或自动更新外部词库。新增规则直接修改 `blacklist/keywords.txt`，或通过网页 `Block` 复制关键词后在 GitHub 编辑该文件并提交 PR。
+第三方 Git 子模块已移除，本地运行和 GitHub Actions 都直接读取仓库内的词库，不再拉取或自动更新外部词库。新增规则可直接修改 `blacklist/keywords.txt`，也可通过网页 `Block` 提交预填 Issue，由 Actions 自动创建追加关键词的 PR。
 
 迁入来源、版本、标点处理及修改说明见 [blacklist/SOURCES.md](blacklist/SOURCES.md)。原 Apache-2.0 许可证与版权声明保存在 `blacklist/licenses/`。
 
@@ -98,19 +98,23 @@ python3 -m venv .venv
 
 ## 网页划词提交黑名单 PR
 
-在文章标题、正文或列表摘要中用鼠标选中文字，会弹出一个 `Block` 按钮。点击后会复制关键词，并打开 GitHub 中固定文件 `blacklist/keywords.txt` 的编辑页：
+在文章标题、正文或列表摘要中用鼠标选中文字，会弹出一个 `Block` 按钮。点击后打开 GitHub 已填好关键词的 Issue 页面：
 
-1. 在文件末尾另起一行，粘贴复制的关键词，保留已有内容。每行一个词，不要覆盖整份文件。
-2. 选择 **Create a new branch for this commit and start a pull request**，创建新分支，不要直接提交到默认分支。
-3. 按 GitHub 页面提示创建 Pull Request。没有仓库写权限的读者需要能访问该仓库，并按提示 fork 后提交。
+1. 登录 GitHub，确认选词后提交 Issue，无需编辑 `keywords.txt`，保留自动生成的 Issue 正文。
+2. `Block keyword PR` 工作流读取关键词，从仓库默认分支创建 `block/issue-编号` 分支，在 `blacklist/keywords.txt` 末尾自动追加一行并创建 PR。其他内容保持不变；无写权限的读者也可通过 Issue 提议关键词，无需 fork。
+3. 仓库作者审核并手动合并 PR 后，新词才进入默认分支（当前为 `master`）并生效；合并时自动关闭关联 Issue。工作流不会自动合并 PR，也不会直接写默认分支。
 
-网站不保存令牌，也不会自动提交、合并 PR。私有仓库仅对拥有访问权限的用户开放此流程。若浏览器阻止自动复制，会弹出包含所选关键词的对话框，手动复制后继续操作。
+首次启用须将 `.github/workflows/block-keyword.yml` 和 `scripts/block-keyword-pr.cjs` 推送到仓库默认分支，并确认仓库已开启 **Issues**。在 **Settings → Actions → General → Workflow permissions** 勾选 **Allow GitHub Actions to create and approve pull requests**；本工作流只创建 PR，不调用批准或合并操作。工作流显式申请 Contents / Pull requests 写权限，若组织策略禁止，需要仓库管理员放行。
+
+默认使用 Actions 的 `GITHUB_TOKEN`，无需新增 Secret，令牌不会发送到浏览器或网站。GitHub 不会为这个令牌新建的 PR 自动触发其他工作流；若合并保护要求 PR 自动运行 `test.yml`，可配置可访问本仓库的细粒度 PAT 到 **Actions Secret `BLOCK_PR_TOKEN`**，权限为 Contents、Pull requests 读写，工作流会优先使用它。PR 合并权限仍由仓库权限和分支保护决定；如需强制仅作者合并，应在仓库设置中限制默认分支的更新权限。
+
+重复任务会复用同一个 Issue 分支及 PR，不会重复追加。已被主分支现有词覆盖时不新建 PR，可在 Actions 日志查看原因；API 权限或网络失败时在 Actions 中重跑失败任务即可。私有仓库仅对拥有访问和创建 Issue 权限的用户开放此流程。
 
 新增词统一追加到 `blacklist/keywords.txt`，不再逐词新建文件；原有配置词和旧哈希文件中的词已合并到此文件，加载器仍兼容配置及其他 `blacklist/*.txt`。PR 合并到 `master` 后会触发清理发布，应用新规则及 30 天保留规则、删除命中或过期的旧文章页面，不采集新帖；新内容由下一轮定时任务采集。关键词同时匹配**标题和正文**，已有文章也会按全文重新筛选。
 
-`config.toml` 的 `[site]` 中配置 `github_repository = "owner/repo"` 和 `github_branch = "默认分支名"`。当前已按仓库 origin 配置为 `duiniuluantanqin/last30days`、`master`；更换仓库或分支时同步修改。仓库留空会隐藏此功能。
+`config.toml` 的 `[site]` 中配置 `github_repository = "owner/repo"`。当前为 `duiniuluantanqin/last30days`；仓库留空会隐藏此功能。PR 目标分支读取 GitHub 仓库实际默认分支，旧配置 `github_branch` 为兼容仍可读取，但不再用于 Block。
 
-选择长度限制为 1–80 个字符，换行合并为空格；已被现有包含词规则覆盖或超长的选词不显示按钮。点击空白处、滚动或按 Escape 可关闭。普通 HTTP（包括公网 IP 地址）和 HTTPS 都支持；复制使用点击事件中的兼容方式，不依赖 Web Crypto 或仅限安全来源的 Clipboard API。
+选择长度限制为 1–80 个字符，换行合并为空格；已被现有包含词规则覆盖、包含控制字符或超长的选词不显示按钮，工作流也会独立校验输入。点击空白处、滚动或按 Escape 可关闭。普通 HTTP（包括公网 IP 地址）和 HTTPS 都支持，不依赖剪贴板权限、Web Crypto 或网站后端。
 
 **已有 Caddy 配置也需要同步更新 CSP：** 在 `Content-Security-Policy` 中增加 `script-src 'self'`，参考 `deploy/Caddyfile.example`。这里只允许加载本网站的脚本，不需要放开内联脚本或 GitHub API 请求。修改 Caddy 配置后验证并重载；本地预览服务修改代码后也应重启。
 
@@ -120,7 +124,7 @@ python3 -m venv .venv
 
 ```text
 config.toml                      来源、黑名单与运行预算
-blacklist/keywords.txt            通过 Block 复制后集中追加的黑名单关键词
+blacklist/keywords.txt            通过 Block PR 集中追加的黑名单关键词
 blacklist/SOURCES.md             迁入词库的来源、版本及修改说明
 blacklist/licenses/              迁入词库的许可证与版权声明
 forum_archive/                   采集、状态、渲染与本地预览
@@ -143,13 +147,16 @@ SQLite 包含结构化正文与状态，是权威归档，需要备份。公开�
 
 ```powershell
 .venv/Scripts/python.exe -m unittest discover -s tests -v
+node --test tests/test_block_keyword_pr.cjs
 ```
 
 覆盖标题和全文规则、正文命中后的持续屏蔽、真实页面结构的时间戳、来源版块限制、主帖与回复分离、正文清理、懒加载原图链接、零图片请求、去重、失败重试、历史扫描边界、robots 限速和重新筛选后的旧页面下线。
 
-可选浏览器检查需要在执行该命令的 Python 环境中安装 Playwright 和可用的 Chromium/Chrome。先启动演示预览，再运行 `python tests/browser_keyword_menu.py --url http://127.0.0.1:8765/`。检查实际鼠标划词、固定文件的 GitHub 编辑链接、剪贴板复制和粘贴、重复词、长度限制和手机弹窗位置，不向 GitHub 提交任何内容。测试会写入系统剪贴板。
+Issue 转 PR 测试需要 Node.js 20 或更高版本，使用模拟 GitHub API，覆盖追加写入、重复词、不合法输入、任务重跑和失败恢复，不实际创建 Issue 或 PR。
 
-追加 `--http-origin` 可将本地页面映射到普通 HTTP 测试来源，验证 Chrome 中 `isSecureContext=false` 时的 `Block` 菜单、固定文件编辑链接及复制功能；同时校验中文、emoji、复制失败提示和多次复制。
+可选浏览器检查需要在执行该命令的 Python 环境中安装 Playwright 和可用的 Chromium/Chrome。先启动演示预览，再运行 `python tests/browser_keyword_menu.py --url http://127.0.0.1:8765/`。检查实际鼠标划词、预填 Issue 链接和关键词载荷、重复词、长度限制和手机弹窗位置，不向 GitHub 提交任何内容。
+
+追加 `--http-origin` 可将本地页面映射到普通 HTTP 测试来源，验证 Chrome 中 `isSecureContext=false` 时的 `Block` 菜单及 Issue 跳转；同时校验中文、emoji 和特殊字符的编码。
 
 ## GitHub Actions 与 ECS（本地测试不会执行部署）
 

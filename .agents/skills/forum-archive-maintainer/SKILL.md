@@ -13,7 +13,7 @@ description: 维护本仓库的论坛采集、标题与正文黑名单、图片�
 - 黑名单：检查 `config.py` 的 `TitleFilter`、`crawler.py` 的采集复查和 `store.py` 的 `apply_filter`。新帖与已有帖必须使用同一套标题和全文规则，正文不能只用 180 字摘要代替。保留规范化、跨标签与 HTML 实体处理。
 - 词库仅依赖本地 `blacklist/keywords.txt`；原上游的色情和广告规则已迁入，来源和许可证见 `blacklist/SOURCES.md`，不要恢复子模块更新步骤。少数迁入规则刻意保留逗号以维持原匹配范围，不能无差别剥除所有词的标点。
 - 图片隐藏：检查 `site.py` 的构建处理和 `templates/post.html`、`index.html`。仅改变公开展示，保持数据库原始归档可重建；同步更新剩余图片数量、图片提示和必要的摘要文字。具体条件以 README 与当前测试为准。
-- Block：检查 `static/keyword-menu.js` 和 `templates/base.html`。关键词集中追加到 `blacklist/keywords.txt`；不要恢复逐词创建哈希文件的流程。普通 HTTP 不提供 `crypto.subtle` 和现代 Clipboard API，复制兼容处理不可仅在 localhost 验证。
+- Block：检查 `static/keyword-menu.js`、`templates/base.html`、`scripts/block-keyword-pr.cjs` 和 `block-keyword.yml`。单按钮打开预填 Issue，提交后由 Actions 在独立分支追加到 `blacklist/keywords.txt` 并创建面向仓库实际默认分支的 PR，作者手动合并才生效。不得将 Issue 输入作为脚本执行、在浏览器存令牌、直接写主分支或自动合并。普通 HTTP 也须验证；不再依赖复制或手动编辑文件。
 - 历史文章清理或发布：检查 `site.py`、`scripts/remote.py`、`scripts/purge-blocked.sh` 和 `archive.yml`。黑名单变更须先应用到恢复的服务器数据库，再生成新站点和删除清单；旧 HTML 通过数字帖子 ID 精确删除。源站访问失败不能阻止已完成的下架。不要把公开输出目录或 Actions 缓存当权威数据库。
 - 流水线采集仅由 `schedule` 事件执行；push 和 `workflow_dispatch` 事件只恢复 ECS 状态、重筛、构建和清理发布。不要让手动任务或合并关键词 PR 触发源站采集。
 - 磁盘保留与备份：`remote.py` 在切换前滚动备份旧状态到 `state/archive.sqlite3.bak`，失败不得继续切站。发布和文章下架成功后才运行 `scripts/prune-deployments.sh`，保留最新 3 个数字编号版本并额外保护 `current`，清理本次上传及超过 24 小时的已知上传残留；不删除状态目录，不遍历软链接或无关文件。相关真实 shell 与模拟发布测试在 `tests/test_deployment_retention.py`。
@@ -30,6 +30,7 @@ description: 维护本仓库的论坛采集、标题与正文黑名单、图片�
 .venv/Scripts/python.exe -X utf8 -m unittest discover -s tests -v
 .venv/Scripts/python.exe -m forum_archive demo
 git diff --check
+node --test tests/test_block_keyword_pr.cjs
 ```
 
 Linux 使用当前虚拟环境的 `python`。默认运行不需要拉取第三方词库；若用户配置了额外的 `filter.keyword_files`，缺失文件须报告其路径，不能静默跳过。
@@ -41,4 +42,4 @@ Linux 使用当前虚拟环境的 `python`。默认运行不需要拉取第三�
 python tests/browser_keyword_menu.py --url http://127.0.0.1:8768/ --http-origin
 ```
 
-复用已存在的预览进程或选择空闲端口；不要任意终止其他进程。浏览器测试会覆盖剪贴板，但不得真正向 GitHub 提交内容。部署与线上清理仅在本次授权范围内执行，未部署时给出推送后由现有流水线生效的说明。
+复用已存在的预览进程或选择空闲端口；不要任意终止其他进程。浏览器测试拦截 GitHub 导航，不得真正提交 Issue 或 PR。Issue 转 PR 的离线测试使用模拟 API；配置和令牌权限限制见根目录 README。部署与线上清理仅在本次授权范围内执行，未部署时给出推送后由现有流水线生效的说明。

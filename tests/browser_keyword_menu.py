@@ -4,7 +4,7 @@ import argparse
 import json
 from pathlib import Path
 import sys
-from urllib.parse import quote, urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from playwright.sync_api import sync_playwright
 
@@ -56,41 +56,31 @@ def main():
         word = page.evaluate("getSelection().toString().trim().replace(/\\s+/gu, ' ')")
         assert word
 
-        def check_link():
+        def check_link(expected):
             link = urlsplit(menu.locator(".keyword-submit").get_attribute("href"))
             assert link.scheme == "https" and link.netloc == "github.com"
-            expected_path = f"/{menu.get_attribute('data-repository')}/edit/{quote(menu.get_attribute('data-branch'), safe='')}/blacklist/keywords.txt"
+            expected_path = f"/{menu.get_attribute('data-repository')}/issues/new"
             assert link.path == expected_path
-            assert not link.query
+            query = parse_qs(link.query)
+            assert query["title"] == [f"[Block] {expected}"]
+            marker, payload = query["body"][0].split("\n", 1)
+            assert marker == "<!-- forum-archive-block:v1 -->"
+            assert json.loads(payload) == {"keyword": expected}
 
-        def click_and_check_copy(expected):
-            check_link()
+        def click_and_check_issue(expected):
+            check_link(expected)
             with page.expect_popup() as popup:
                 menu.locator(".keyword-submit").click()
             popup.value.wait_for_load_state()
-            assert urlsplit(popup.value.url).path.endswith("/blacklist/keywords.txt")
+            assert urlsplit(popup.value.url).path.endswith("/issues/new")
+            assert parse_qs(urlsplit(popup.value.url).query)["title"] == [f"[Block] {expected}"]
             popup.value.close()
             page.bring_to_front()
-            page.evaluate("""() => {
-                let input = document.getElementById('clipboard-test');
-                if (!input) {
-                    input = document.createElement('textarea');
-                    input.id = 'clipboard-test';
-                    input.style.position = 'fixed';
-                    input.style.top = '0';
-                    document.body.append(input);
-                }
-                input.value = '';
-                input.focus({preventScroll: true});
-            }""")
-            page.keyboard.press("Control+V")
-            page.wait_for_function("expected => document.getElementById('clipboard-test').value === expected", arg=expected)
-            page.locator("#clipboard-test").evaluate("node => node.remove()")
 
-        check_link()
+        check_link(word)
         assert menu.inner_text().strip() == "Block"
         page.screenshot(path=str(output / "keyword-menu-desktop.png"))
-        click_and_check_copy(word)
+        click_and_check_issue(word)
         page.keyboard.press("Escape")
         assert menu.is_hidden()
 
@@ -119,27 +109,15 @@ def main():
         assert menu.locator(".keyword-submit").is_hidden()
         select_text('读者 "建议" <script>\n第二行')
         page.wait_for_selector("#keyword-menu .keyword-submit:not([hidden])")
-        check_link()
+        check_link('读者 "建议" <script> 第二行')
         assert page.locator("#keyword-menu script").count() == 0
-        click_and_check_copy('读者 "建议" <script> 第二行')
+        click_and_check_issue('读者 "建议" <script> 第二行')
         for vector in ("abc", "x" * 80, "测" * 80, "😀" * 80):
             select_text(vector)
             page.wait_for_selector("#keyword-menu .keyword-submit:not([hidden])", timeout=5000)
-            click_and_check_copy(vector)
-        page.evaluate("() => { window.originalCopy = document.execCommand; }")
-        for failure in ("return false", "throw new Error('Copy denied')"):
-            select_text("复制失败时保留关键词")
-            page.evaluate("() => { document.execCommand = () => {" + failure + "}; }")
-            dialogs = []
-            page.once("dialog", lambda dialog: (dialogs.append(dialog.default_value), dialog.dismiss()))
-            with page.expect_popup() as popup:
-                menu.locator(".keyword-submit").click()
-            popup.value.wait_for_load_state()
-            assert urlsplit(popup.value.url).path.endswith("/blacklist/keywords.txt")
-            popup.value.close()
-            page.bring_to_front()
-            assert dialogs == ["复制失败时保留关键词"]
-        page.evaluate("() => { document.execCommand = window.originalCopy; }")
+            click_and_check_issue(vector)
+        select_text("控制\u200b字符")
+        assert menu.is_hidden()
         page.set_viewport_size({"width": 390, "height": 844})
         page.wait_for_timeout(150)  # Let resize/scroll events settle before a new selection.
         select_text("家庭服务器")
@@ -153,7 +131,7 @@ def main():
         assert menu.is_hidden()
         assert not errors, errors
         browser.close()
-    print(json.dumps({"http_origin": args.http_origin, "mouse_selection": "pass", "github_link": "pass", "clipboard": "pass", "copy_failure": "pass", "duplicate_word": "pass", "length_limit": "pass", "mobile": "pass", "submitted_to_github": False}))
+    print(json.dumps({"http_origin": args.http_origin, "mouse_selection": "pass", "github_issue": "pass", "keyword_payload": "pass", "duplicate_word": "pass", "length_limit": "pass", "mobile": "pass", "submitted_to_github": False}))
 
 
 if __name__ == "__main__":

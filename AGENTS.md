@@ -13,7 +13,7 @@
 
 - 只采集楼主主帖；不收集回复、视频、附件，不下载图片，只保存原图 URL。
 - 黑名单匹配标题与完整正文文字，任一命中屏蔽整篇；不匹配 HTML 属性、图片 URL 或链接目标。
-- `Block` 保持单按钮、纯静态：复制关键词并打开 GitHub 的 `blacklist/keywords.txt` 编辑页，由用户追加一行并创建 PR，不保存令牌。
+- `Block` 保持单按钮、纯静态：打开预填关键词的 GitHub Issue，提交后由 Actions 自动追加到 `blacklist/keywords.txt` 并创建面向默认分支的 PR；只有作者手动合并后生效。浏览器不保存令牌，Issue 输入不能作为脚本执行。
 - 图片展示规则在构建时处理，适用于已有归档；不覆写 SQLite 中的原始正文。修改规则时同步处理图片计数、提示和摘要。
 - “防水图”命中时隐藏全部图片，并移除正文及摘要中的这三个字；正文至少 200 个非空白字符且所有图片只出现在文末时，也隐藏全部图片，不限张数。正文中间配图或图片后有文字时不应用后一规则。
 - 按原帖发布时间滚动保留 30 天。帖子 ID 和状态用于去重；不要用文件修改时间、抓取时间或最后回复时间代替发布时间。
@@ -30,5 +30,6 @@
 - 维护这些功能时参考项目技能：[forum-archive-maintainer](.agents/skills/forum-archive-maintainer/SKILL.md)。
 
 Windows 离线测试：`.venv/Scripts/python.exe -X utf8 -m unittest discover -s tests -v`。
+Issue 转 PR 离线测试：`node --test tests/test_block_keyword_pr.cjs`。
 演示构建：`.venv/Scripts/python.exe -m forum_archive demo`，使用独立的演示数据库，不访问源站。
 前端行为变更时按 README 的可选浏览器检查验证，包括普通公网 HTTP 来源；不在测试中提交 GitHub PR。

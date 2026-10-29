@@ -27,9 +27,8 @@ title = "拾页"
 subtitle = "技术讨论 · 每小时更新"
 description = "把值得阅读的讨论，留在这里。"
 page_size = 20
-# Readers confirm changes on GitHub; no browser token or backend is needed.
+# Block submits an Issue; Actions opens a PR against GitHub's default branch.
 github_repository = "duiniuluantanqin/last30days"
-github_branch = "master"
 
 [storage]
 database = "data/archive.sqlite3"
