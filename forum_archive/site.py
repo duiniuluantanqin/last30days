@@ -22,7 +22,9 @@ def build(settings: Settings, *, now: datetime | None = None) -> Path:
     now = now or datetime.now(ZoneInfo(settings.source.timezone))
     with Store(settings, now) as store:
         store.apply_filter(settings.filters)
+        store.expire_old()
         articles = store.articles()
+        removed_ids = store.removed_ids()
         last_success = store.get("last_success_at")
     settings.output.mkdir(parents=True, exist_ok=True)
     # Public files should inherit the website directory's read permissions.
@@ -45,7 +47,7 @@ def build(settings: Settings, *, now: datetime | None = None) -> Path:
         groups[article["published_at"][:7]].append(article)
     months = sorted(groups, reverse=True)
     common = dict(site=settings.site, total=len(articles), months=months, last_success=last_success,
-                  source_url=settings.source.list_url, generated_at=now.isoformat())
+                  source_url=settings.source.list_url, generated_at=now.isoformat(), keyword_rules=settings.filters.keywords)
 
     def write(path, template, **context):
         (release / path).write_text(env.get_template(template).render(**common, **context), encoding="utf-8")
@@ -76,6 +78,12 @@ def build(settings: Settings, *, now: datetime | None = None) -> Path:
     temporary = settings.output / "current.json.tmp"
     temporary.write_text(json.dumps({"release": release.name}, ensure_ascii=False), encoding="utf-8")
     temporary.replace(manifest)
+    # Purge matching HTML from previous generated versions only after the new
+    # release is complete. Never traverse a symlink outside the website output.
+    output = settings.output.resolve()
+    for page in settings.output.glob("release-*/posts/*.html"):
+        if page.stem in removed_ids and page.resolve().is_relative_to(output):
+            page.unlink()
     return release
 
 
@@ -107,7 +115,7 @@ class ArchiveHandler(SimpleHTTPRequestHandler):
     def end_headers(self):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
-        self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'self'; img-src https: http:; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")
+        self.send_header("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; img-src https: http:; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")
         super().end_headers()
 
 

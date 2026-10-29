@@ -84,6 +84,60 @@ class ArchiveTests(unittest.TestCase):
         self.assertTrue(self.settings.filters.blocks("广告 123"))
         self.assertFalse(self.settings.filters.blocks("普通技术讨论"))
 
+    def test_extra_keyword_files_extend_config_blacklist(self):
+        config = self.settings.root / "config.toml"
+        config.write_text('[source]\nlist_url = "' + SOURCE + '"\n[filter]\nblocked_keywords = ["原有词"]\n', encoding="utf-8")
+        directory = self.settings.root / "blacklist"
+        directory.mkdir()
+        (directory / "one.txt").write_text("新增词\n", encoding="utf-8")
+        (directory / "two.txt").write_text("\n  另一个词  \n", encoding="utf-8")
+        (directory / "README.md").write_text("不是黑名单词", encoding="utf-8")
+        settings = Settings.load(config)
+        self.assertTrue(settings.filters.blocks("包含原有词的标题"))
+        self.assertTrue(settings.filters.blocks("包含新增词的标题"))
+        self.assertTrue(settings.filters.blocks("包含另一个词的标题"))
+        self.assertFalse(settings.filters.blocks("不是黑名单词"))
+
+    def test_keyword_menu_has_safe_repository_configuration(self):
+        self.settings.site = replace(self.settings.site, github_repository="example/archive", github_branch="feature/rules")
+        self.settings.filters = TitleFilter(["原有词", "</div><script>bad()</script>"])
+        release = build(self.settings, now=NOW)
+        page = BeautifulSoup((release / "index.html").read_text(encoding="utf-8"), "html.parser")
+        menu = page.select_one("#keyword-menu")
+        self.assertIsNotNone(menu)
+        self.assertEqual(menu["data-repository"], "example/archive")
+        self.assertEqual(menu["data-branch"], "feature/rules")
+        self.assertEqual(json.loads(menu["data-keywords"]), self.settings.filters.keywords)
+        scripts = page.select("script")
+        self.assertEqual(len(scripts), 1)
+        self.assertEqual(scripts[0]["src"], "/assets/keyword-menu.js")
+        self.assertTrue((release / "assets/keyword-menu.js").is_file())
+        self.assertFalse(scripts[0].get_text(strip=True))
+
+    def test_merged_keyword_file_hides_previously_collected_article(self):
+        with Store(self.settings, NOW) as store:
+            store.discover(Thread("101", SOURCE, "新增关键词讨论", NOW.isoformat()), NOW)
+            store.save_post("101", Post("新增关键词讨论", NOW.isoformat(), "<p>正文</p>", "正文", 0), NOW, False)
+        first = build(self.settings, now=NOW)
+        self.assertTrue((first / "posts/101.html").is_file())
+        config = self.settings.root / "config.toml"
+        config.write_text('[source]\nlist_url = "' + SOURCE + '"\n', encoding="utf-8")
+        directory = self.settings.root / "blacklist"
+        directory.mkdir()
+        (directory / "new.txt").write_text("新增关键词\n", encoding="utf-8")
+        updated = Settings.load(config)
+        second = build(updated, now=NOW)
+        self.assertFalse((second / "posts/101.html").exists())
+        self.assertNotIn("新增关键词讨论", (second / "index.html").read_text(encoding="utf-8"))
+        self.assertFalse((first / "posts/101.html").exists())
+
+    def test_keyword_menu_is_absent_without_repository(self):
+        self.settings.site = replace(self.settings.site, github_repository="")
+        release = build(self.settings, now=NOW)
+        page = BeautifulSoup((release / "index.html").read_text(encoding="utf-8"), "html.parser")
+        self.assertIsNone(page.select_one("#keyword-menu"))
+        self.assertEqual(page.select("script"), [])
+
     def test_real_layout_timestamp_and_forum_scope(self):
         html = listing([("123", "正常讨论", NOW, NOW)], 5)
         html += '<h3><a href="/htm_data/2610/9/999.html">其他版块</a></h3>'
@@ -199,7 +253,75 @@ class ArchiveTests(unittest.TestCase):
         self.assertNotEqual(first, second)
         self.assertFalse((second / "posts/101.html").exists())
         self.assertEqual(current_release(self.settings.output), second.resolve())
-        self.assertTrue((first / "posts/101.html").exists())  # No destructive cleanup.
+        self.assertFalse((first / "posts/101.html").exists())
+
+    def test_blocked_page_cleanup_keeps_other_articles_and_state(self):
+        with Store(self.settings, NOW) as store:
+            for thread_id, title in (("101", "需要屏蔽的讨论"), ("102", "保留的讨论")):
+                store.discover(Thread(thread_id, SOURCE, title, NOW.isoformat()), NOW)
+                store.save_post(thread_id, Post(title, NOW.isoformat(), "<p>正文</p>", "正文", 0), NOW, False)
+        first = build(self.settings, now=NOW)
+        second = build(self.settings, now=NOW)
+        unrelated = self.settings.output / "unrelated/posts/101.html"
+        unrelated.parent.mkdir(parents=True)
+        unrelated.write_text("不是生成的文章页", encoding="utf-8")
+        self.settings.filters = TitleFilter(["需要屏蔽"])
+        latest = build(self.settings, now=NOW)
+        for release in (first, second, latest):
+            self.assertFalse((release / "posts/101.html").exists())
+            self.assertTrue((release / "posts/102.html").exists())
+        self.assertTrue(unrelated.exists())
+        self.assertEqual(current_release(self.settings.output), latest.resolve())
+        with Store(self.settings, NOW) as store:
+            self.assertEqual(store.counts(), {"blocked": 1, "collected": 1})
+        # Repeated cleanup and later discovery must not restore the blocked post.
+        with Store(self.settings, NOW) as store:
+            store.discover(Thread("101", SOURCE, "需要屏蔽的讨论", NOW.isoformat()), NOW)
+            self.assertEqual(store.pending(10, 3), [])
+        build(self.settings, now=NOW)
+        self.assertFalse((latest / "posts/101.html").exists())
+
+    def test_rolling_retention_deletes_old_body_and_generated_pages(self):
+        earlier = NOW - timedelta(days=10)
+        dates = {"101": NOW - timedelta(days=30, seconds=1),
+                 "102": NOW - timedelta(days=30),
+                 "103": NOW - timedelta(days=29)}
+        with Store(self.settings, earlier) as store:
+            for thread_id, date in dates.items():
+                title = "文章" + thread_id
+                store.discover(Thread(thread_id, SOURCE, title, date.isoformat()), earlier)
+                store.save_post(thread_id, Post(title, date.isoformat(), "<p>保留正文</p>", "摘要", 2), earlier, False)
+        old_release = build(self.settings, now=earlier)
+        self.assertTrue((old_release / "posts/101.html").is_file())
+        latest = build(self.settings, now=NOW)
+        for release in (old_release, latest):
+            self.assertFalse((release / "posts/101.html").exists())
+            self.assertTrue((release / "posts/102.html").is_file())
+            self.assertTrue((release / "posts/103.html").is_file())
+        self.assertNotIn("文章101", (latest / "index.html").read_text(encoding="utf-8"))
+        with Store(self.settings, NOW) as store:
+            row = store.db.execute("SELECT * FROM threads WHERE id='101'").fetchone()
+            self.assertEqual(row["status"], "expired")
+            self.assertIsNone(row["body_html"])
+            self.assertIsNone(row["summary"])
+            self.assertEqual(row["image_count"], 0)
+            self.assertIn("101", store.removed_ids())
+            self.assertEqual(store.cutoff, NOW - timedelta(days=30))
+
+    def test_expired_posts_cannot_be_restored_by_removing_blacklist(self):
+        earlier = NOW - timedelta(days=10)
+        date = NOW - timedelta(days=31)
+        with Store(self.settings, earlier) as store:
+            store.discover(Thread("101", SOURCE, "测试文章", date.isoformat()), earlier)
+            store.save_post("101", Post("测试文章", date.isoformat(), "<p>旧正文</p>", "摘要", 0), earlier, False)
+        self.settings.filters = TitleFilter(["测试"])
+        build(self.settings, now=NOW)
+        self.settings.filters = TitleFilter([])
+        build(self.settings, now=NOW)
+        with Store(self.settings, NOW) as store:
+            self.assertEqual(store.articles(), [])
+            self.assertEqual(store.pending(10, 3), [])
+            self.assertIn("101", store.removed_ids())
 
     def test_last_reply_not_creation_date_controls_backfill_boundary(self):
         self.settings.crawl.backfill_pages_per_run = 2

@@ -1,6 +1,7 @@
 """Restore state and publish a static release over SSH. Never invoked by local crawl."""
 
 import argparse
+from datetime import datetime
 import os
 from pathlib import Path, PurePosixPath
 import re
@@ -8,8 +9,10 @@ import shlex
 import subprocess
 import tarfile
 import time
+from zoneinfo import ZoneInfo
 
 from forum_archive.config import Settings
+from forum_archive.store import Store
 
 
 class Remote:
@@ -72,6 +75,12 @@ class Remote:
             raise ValueError("采集状态不存在，拒绝发布")
         identifier = f"release-{time.time_ns()}"
         archive = Path(".cache/deploy/site.tar.gz")
+        removed = Path(".cache/deploy/removed.txt")
+        with Store(settings, datetime.now(ZoneInfo(settings.source.timezone))) as store:
+            removed_ids = sorted(store.removed_ids())
+        if any(not re.fullmatch(r"[0-9]+", thread_id) for thread_id in removed_ids):
+            raise ValueError("删除清单包含无效的帖子 ID，拒绝发布")
+        removed.write_bytes("".join(f"{thread_id}\n" for thread_id in removed_ids).encode("ascii"))
         with tarfile.open(archive, "w:gz") as bundle:
             for path in sorted(release.rglob("*")):
                 if path.is_symlink():
@@ -82,6 +91,10 @@ class Remote:
         self.execute(f"mkdir -p {root}/incoming {root}/releases {root}/state", check=True)
         self.upload(archive, f"{root}/incoming/{identifier}.tar.gz")
         self.upload(settings.database, f"{root}/incoming/{identifier}.sqlite3")
+        self.upload(removed, f"{root}/incoming/{identifier}.removed.txt")
+        cleanup = Path(".cache/deploy/purge-blocked.sh")
+        cleanup.write_bytes(Path(__file__).with_name("purge-blocked.sh").read_bytes().replace(b"\r\n", b"\n"))
+        self.upload(cleanup, f"{root}/incoming/{identifier}.purge.sh")
         # Files/state are fully uploaded before switching the public entry point.
         # All paths are validated above; only a generated symlink/state is replaced.
         commands = [
@@ -91,9 +104,10 @@ class Remote:
             f"ln -s releases/{identifier} {root}/current-{identifier}",
             f"mv -Tf {root}/current-{identifier} {root}/current",
             f"mv {root}/incoming/{identifier}.sqlite3 {root}/state/archive.sqlite3",
+            f"sh {root}/incoming/{identifier}.purge.sh {root} {root}/incoming/{identifier}.removed.txt",
         ]
         self.execute(" && ".join(commands), check=True)
-        print("网站与采集进度已发布。旧版本暂时保留，不自动清理历史内容。")
+        print("网站与采集进度已发布，命中黑名单或超过 30 天的文章页面已删除。")
 
 
 def main():

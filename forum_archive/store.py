@@ -31,7 +31,7 @@ class Store(AbstractContextManager):
             self.set("archive_start", (now - timedelta(days=settings.crawl.initial_days)).isoformat())
             self.set("backfill_page", "1")
             self.set("recent_page", "1")
-        self.cutoff = datetime.fromisoformat(self.get("archive_start"))
+        self.cutoff = max(datetime.fromisoformat(self.get("archive_start")), now - timedelta(days=30))
 
     def __exit__(self, *args):
         self.db.close()
@@ -67,6 +67,17 @@ class Store(AbstractContextManager):
         return self.db.execute("""SELECT * FROM threads WHERE status='pending' AND attempts < ?
             ORDER BY COALESCE(listed_at,first_seen) DESC,id DESC LIMIT ?""", (max_attempts, limit)).fetchall()
 
+    def expire_old(self) -> int:
+        expired = []
+        for row in self.db.execute("SELECT id,published_at,listed_at FROM threads"):
+            date = row["published_at"] or row["listed_at"]
+            if date and datetime.fromisoformat(date) < self.cutoff:
+                expired.append((row["id"],))
+        with self.db:
+            self.db.executemany("""UPDATE threads SET status='expired',body_html=NULL,summary=NULL,
+                image_count=0,last_error=NULL WHERE id=?""", expired)
+        return len(expired)
+
     def save_post(self, thread_id: str, post: Post, now: datetime, blocked: bool):
         status = "blocked" if blocked else ("expired" if datetime.fromisoformat(post.published_at) < self.cutoff else "collected")
         with self.db:
@@ -87,6 +98,9 @@ class Store(AbstractContextManager):
 
     def articles(self):
         return [dict(row) for row in self.db.execute("SELECT * FROM threads WHERE status='collected' ORDER BY published_at DESC,id DESC")]
+
+    def removed_ids(self):
+        return {row[0] for row in self.db.execute("SELECT id FROM threads WHERE status IN ('blocked','expired')")}
 
     def counts(self):
         return dict(self.db.execute("SELECT status,COUNT(*) FROM threads GROUP BY status").fetchall())

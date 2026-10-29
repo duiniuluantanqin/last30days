@@ -147,10 +147,8 @@ def crawl(settings: Settings, *, retry_failed: bool = False, fetcher=None, now: 
                         break
 
             stats["blocked"] += store.apply_filter(settings.filters)
-            # Exact listing timestamps let us reject old posts without fetching them.
-            with store.db:
-                expired = store.db.execute("UPDATE threads SET status='expired' WHERE status='pending' AND listed_at IS NOT NULL AND listed_at < ?", (store.cutoff.isoformat(),))
-                stats["expired"] += expired.rowcount
+            # Expire saved bodies as well as old discovered links before fetching.
+            stats["expired"] += store.expire_old()
             for thread in store.pending(settings.crawl.max_posts_per_run, settings.crawl.max_attempts):
                 try:
                     if not source.same_origin(thread["url"]):
