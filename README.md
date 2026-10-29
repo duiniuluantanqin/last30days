@@ -4,7 +4,7 @@
 
 **按标题和正文黑名单排除整篇帖子，不识别图片内容。图片只保留原链接，采集器不请求、不保存、不上传图片。** 浏览器阅读文章时会直接请求原图地址，外链可能因防盗链、失效或 HTTPS 页面加载 HTTP 图片而无法显示。
 
-主帖正文出现“防水图”时，公开页面屏蔽该文章的全部图片，保留文字，并隐藏图片数量和图片加载提示。该规则也适用于已经采集的文章，重新运行 `build` 即可生效；数据库中的原始归档不变。
+主帖正文出现“防水图”时，公开页面屏蔽该文章的全部图片，并从正文和列表摘要中移除“防水图”三个字，保留其余文字，隐藏图片数量和图片加载提示。支持文字跨 HTML 标签或以实体编码出现。该规则也适用于已经采集的文章，重新运行 `build` 即可生效；数据库中的原始归档不变。
 
 ## 本地运行（Windows）
 
@@ -116,19 +116,19 @@ git submodule update --init --remote --depth 1 -- third_party/multilingual-sensi
 
 ## 网页划词提交黑名单 PR
 
-在文章标题、正文或列表摘要中用鼠标选中文字，会弹出一个 `Block` 按钮。点击后，在 GitHub 登录并确认：
+在文章标题、正文或列表摘要中用鼠标选中文字，会弹出一个 `Block` 按钮。点击后会复制关键词，并打开 GitHub 中固定文件 `blacklist/keywords.txt` 的编辑页：
 
-1. 检查预填的关键词文件内容。
+1. 在文件末尾另起一行，粘贴复制的关键词，保留已有内容。每行一个词，不要覆盖整份文件。
 2. 选择 **Create a new branch for this commit and start a pull request**，创建新分支，不要直接提交到默认分支。
 3. 按 GitHub 页面提示创建 Pull Request。没有仓库写权限的读者需要能访问该仓库，并按提示 fork 后提交。
 
-菜单只准备 GitHub 链接，不会在网站内登录或保存令牌，也不会自动提交、合并 PR。私有仓库仅对拥有访问权限的用户开放此流程。
+网站不保存令牌，也不会自动提交、合并 PR。私有仓库仅对拥有访问权限的用户开放此流程。若浏览器阻止自动复制，会弹出包含所选关键词的对话框，手动复制后继续操作。
 
-新增词保存在 `blacklist/<关键词 SHA-256>.txt`，原有 `config.toml` 黑名单继续有效。PR 合并到 `master` 后会触发流水线，先应用新规则及 30 天保留规则并发布、删除命中或过期的旧文章页面，再采集新帖子；源站抓取失败不会撤销已完成的下架。关键词同时匹配**标题和正文**，已有文章也会按全文重新筛选。
+新增词统一追加到 `blacklist/keywords.txt`，不再逐词新建文件；原有 `config.toml` 黑名单及其他 `blacklist/*.txt` 仍有效。PR 合并到 `master` 后会触发流水线，先应用新规则及 30 天保留规则并发布、删除命中或过期的旧文章页面，再采集新帖子；源站抓取失败不会撤销已完成的下架。关键词同时匹配**标题和正文**，已有文章也会按全文重新筛选。
 
 `config.toml` 的 `[site]` 中配置 `github_repository = "owner/repo"` 和 `github_branch = "默认分支名"`。当前已按仓库 origin 配置为 `duiniuluantanqin/last30days`、`master`；更换仓库或分支时同步修改。仓库留空会隐藏此功能。
 
-选择长度限制为 1–80 个字符，换行合并为空格；已被现有包含词规则覆盖或超长的选词不显示按钮。点击空白处、滚动或按 Escape 可关闭。普通 HTTP（包括公网 IP 地址）和 HTTPS 都支持；没有 Web Crypto 的 HTTP 页面使用本地 SHA-256 计算文件名，结果与 HTTPS 一致。
+选择长度限制为 1–80 个字符，换行合并为空格；已被现有包含词规则覆盖或超长的选词不显示按钮。点击空白处、滚动或按 Escape 可关闭。普通 HTTP（包括公网 IP 地址）和 HTTPS 都支持；复制使用点击事件中的兼容方式，不依赖 Web Crypto 或仅限安全来源的 Clipboard API。
 
 **已有 Caddy 配置也需要同步更新 CSP：** 在 `Content-Security-Policy` 中增加 `script-src 'self'`，参考 `deploy/Caddyfile.example`。这里只允许加载本网站的脚本，不需要放开内联脚本或 GitHub API 请求。修改 Caddy 配置后验证并重载；本地预览服务修改代码后也应重启。
 
@@ -138,7 +138,7 @@ git submodule update --init --remote --depth 1 -- third_party/multilingual-sensi
 
 ```text
 config.toml                      来源、黑名单与运行预算
-blacklist/*.txt                   通过 PR 增加的黑名单关键词
+blacklist/keywords.txt            通过 Block 复制后集中追加的黑名单关键词
 third_party/multilingual-sensitive-words/  自动更新的上游词库子模块
 forum_archive/                   采集、状态、渲染与本地预览
 forum_archive/templates/         阅读页模板
@@ -162,9 +162,9 @@ SQLite 包含结构化正文与状态，是权威归档，需要备份。公开�
 
 覆盖标题和全文规则、正文命中后的持续屏蔽、真实页面结构的时间戳、来源版块限制、主帖与回复分离、正文清理、懒加载原图链接、零图片请求、去重、失败重试、历史扫描边界、robots 限速和重新筛选后的旧页面下线。
 
-可选浏览器检查需要在执行该命令的 Python 环境中安装 Playwright 和可用的 Chromium/Chrome。先启动演示预览，再运行 `python tests/browser_keyword_menu.py --url http://127.0.0.1:8765/`。检查实际鼠标划词、GitHub 链接、重复词、长度限制和手机弹窗位置，不向 GitHub 提交任何内容。
+可选浏览器检查需要在执行该命令的 Python 环境中安装 Playwright 和可用的 Chromium/Chrome。先启动演示预览，再运行 `python tests/browser_keyword_menu.py --url http://127.0.0.1:8765/`。检查实际鼠标划词、固定文件的 GitHub 编辑链接、剪贴板复制和粘贴、重复词、长度限制和手机弹窗位置，不向 GitHub 提交任何内容。测试会写入系统剪贴板。
 
-追加 `--http-origin` 可将本地页面映射到普通 HTTP 测试来源，验证 Chrome 中 `isSecureContext=false`、无 `crypto.subtle` 时的 `Block` 菜单及文件名计算；同时校验中文、emoji 和多块输入的 SHA-256 结果。
+追加 `--http-origin` 可将本地页面映射到普通 HTTP 测试来源，验证 Chrome 中 `isSecureContext=false` 时的 `Block` 菜单、固定文件编辑链接及复制功能；同时校验中文、emoji、复制失败提示和多次复制。
 
 ## GitHub Actions 与 ECS（本地测试不会执行部署）
 

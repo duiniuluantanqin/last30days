@@ -4,6 +4,7 @@ from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
+import re
 import shutil
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -42,7 +43,16 @@ def build(settings: Settings, *, now: datetime | None = None) -> Path:
         if "防水图" in content.get_text():
             for image in content.select("img"):
                 image.decompose()
+            # Use text offsets so a marker split across tags is removed too.
+            removed = {index for match in re.finditer("防水图", content.get_text())
+                       for index in range(*match.span())}
+            offset = 0
+            for node in list(content.strings):
+                text = str(node)
+                node.replace_with("".join(char for index, char in enumerate(text, offset) if index not in removed))
+                offset += len(text)
             article["body_html"] = str(content)
+            article["summary"] = " ".join(content.get_text(" ", strip=True).split())[:180]
             article["image_count"] = 0
         groups[article["published_at"][:7]].append(article)
     months = sorted(groups, reverse=True)

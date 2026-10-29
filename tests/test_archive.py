@@ -132,12 +132,13 @@ class ArchiveTests(unittest.TestCase):
         config.write_text('[source]\nlist_url = "' + SOURCE + '"\n[filter]\nblocked_keywords = ["原有词"]\n', encoding="utf-8")
         directory = self.settings.root / "blacklist"
         directory.mkdir()
-        (directory / "one.txt").write_text("新增词\n", encoding="utf-8")
+        (directory / "keywords.txt").write_text("新增词\n另一个集中词\n", encoding="utf-8")
         (directory / "two.txt").write_text("\n  另一个词  \n", encoding="utf-8")
         (directory / "README.md").write_text("不是黑名单词", encoding="utf-8")
         settings = Settings.load(config)
         self.assertTrue(settings.filters.blocks("包含原有词的标题"))
         self.assertTrue(settings.filters.blocks("包含新增词的标题"))
+        self.assertTrue(settings.filters.blocks("包含另一个集中词的标题"))
         self.assertTrue(settings.filters.blocks("包含另一个词的标题"))
         self.assertFalse(settings.filters.blocks("不是黑名单词"))
 
@@ -257,26 +258,30 @@ class ArchiveTests(unittest.TestCase):
         self.assertEqual(result.published_at, NOW.isoformat())
 
     def test_build_hides_all_images_in_existing_posts_with_marker(self):
-        markers = ["防水图", "防水<span>图</span>", "&#x9632;&#x6c34;&#x56fe;"]
+        markers = ["防水图", "防水<span>图</span>", "&#x9632;&#x6c34;&#x56fe;",
+                   "防<strong>水</strong>图", "防水<span>图以及防</span>水图"]
         with Store(self.settings, NOW) as store:
             for index, marker in enumerate(markers, 201):
                 thread_id = str(index)
                 body = (f'<p>保留正文：{marker}</p><img src="https://cdn.example/first.jpg">'
                         '<p>后续文字也保留</p><img src="https://cdn.example/second.jpg">')
                 store.discover(Thread(thread_id, SOURCE, "正常讨论", NOW.isoformat()), NOW)
-                store.save_post(thread_id, Post("正常讨论", NOW.isoformat(), body, "正文摘要", 2), NOW, False)
+                store.save_post(thread_id, Post("正常讨论", NOW.isoformat(), body, "正文摘要防水图", 2), NOW, False)
         release = build(self.settings, now=NOW)
-        for index in range(201, 204):
+        for index in range(201, 201 + len(markers)):
             with self.subTest(thread_id=index):
                 page = BeautifulSoup((release / f"posts/{index}.html").read_text(encoding="utf-8"), "html.parser")
                 self.assertEqual(page.select(".prose img"), [])
-                self.assertIn("防水图", page.select_one(".prose").get_text())
+                self.assertNotIn("防水图", page.select_one(".prose").get_text())
+                self.assertIn("保留正文：", page.select_one(".prose").get_text())
                 self.assertIn("后续文字也保留", page.select_one(".prose").get_text())
                 self.assertEqual(page.select(".image-note"), [])
         index_html = (release / "index.html").read_text(encoding="utf-8")
         self.assertNotIn("张外链图片", index_html)
+        self.assertNotIn("防水图", index_html)
         with Store(self.settings, NOW) as store:
             self.assertTrue(all(article["image_count"] == 2 for article in store.articles()))
+            self.assertTrue(all("防水图" in article["summary"] for article in store.articles()))
 
     def test_build_keeps_images_for_posts_without_marker(self):
         with Store(self.settings, NOW) as store:
