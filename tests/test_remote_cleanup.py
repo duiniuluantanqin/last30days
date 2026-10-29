@@ -68,6 +68,20 @@ class RemoteCleanupTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(sorted(self.root.rglob("*.html")), before)
 
+    def test_removed_articles_invalidate_old_full_text_indexes_only(self):
+        for name in ("release-one", "release-two", "unrelated"):
+            index = self.root / "deployment/releases" / name / "assets/search-index.js"
+            index.parent.mkdir()
+            index.write_text("search data", encoding="utf-8")
+        current = self.root / "deployment/current"
+        current.symlink_to(Path("releases") / "release-two", target_is_directory=True)
+        self.assertEqual(self.run_cleanup("").returncode, 0)
+        self.assertTrue((self.root / "deployment/releases/release-one/assets/search-index.js").exists())
+        self.assertEqual(self.run_cleanup("101\n").returncode, 0)
+        self.assertFalse((self.root / "deployment/releases/release-one/assets/search-index.js").exists())
+        self.assertTrue((current / "assets/search-index.js").exists())
+        self.assertTrue((self.root / "deployment/releases/unrelated/assets/search-index.js").exists())
+
     def test_keyword_file_update_deletes_existing_title_and_body_matches(self):
         config = self.root / "config.toml"
         config.write_text('[source]\nlist_url = "https://forum.example/thread0806.php?fid=7"\n', encoding="utf-8")

@@ -201,10 +201,9 @@ class ArchiveTests(unittest.TestCase):
         self.assertNotIn("data-branch", menu.attrs)
         self.assertEqual(json.loads(menu["data-keywords"]), self.settings.filters.keywords)
         scripts = page.select("script")
-        self.assertEqual(len(scripts), 1)
-        self.assertEqual(scripts[0]["src"], "/assets/keyword-menu.js")
+        self.assertEqual([script["src"] for script in scripts], ["/assets/browse.js", "/assets/keyword-menu.js"])
         self.assertTrue((release / "assets/keyword-menu.js").is_file())
-        self.assertFalse(scripts[0].get_text(strip=True))
+        self.assertTrue(all(not script.get_text(strip=True) for script in scripts))
 
     def test_merged_keyword_file_hides_previously_collected_article(self):
         with Store(self.settings, NOW) as store:
@@ -228,7 +227,7 @@ class ArchiveTests(unittest.TestCase):
         release = build(self.settings, now=NOW)
         page = BeautifulSoup((release / "index.html").read_text(encoding="utf-8"), "html.parser")
         self.assertIsNone(page.select_one("#keyword-menu"))
-        self.assertEqual(page.select("script"), [])
+        self.assertEqual([script["src"] for script in page.select("script")], ["/assets/browse.js"])
 
     def test_real_layout_timestamp_and_forum_scope(self):
         html = listing([("123", "正常讨论", NOW, NOW)], 5)

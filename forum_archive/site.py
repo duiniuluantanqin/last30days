@@ -38,6 +38,7 @@ def build(settings: Settings, *, now: datetime | None = None) -> Path:
     env = Environment(loader=FileSystemLoader(PACKAGE / "templates"), autoescape=select_autoescape(["html"]))
     env.filters["date"] = lambda value, fmt="%m-%d %H:%M": datetime.fromisoformat(value).strftime(fmt) if value else "尚未更新"
     groups = defaultdict(list)
+    search_articles = []
     for article in articles:
         content = BeautifulSoup(article["body_html"], "html.parser")
         if "防水图" in content.get_text():
@@ -66,10 +67,16 @@ def build(settings: Settings, *, now: datetime | None = None) -> Path:
                     image.decompose()
                 article["body_html"] = str(content)
                 article["image_count"] = 0
+        search_articles.append({**{key: article[key] for key in ("id", "title", "summary", "published_at", "image_count")},
+                                "text": content.get_text(" ", strip=True)})
         groups[article["published_at"][:7]].append(article)
+    (release / "assets/search-index.js").write_text(
+        "window.archiveSearchIndex = " + json.dumps({"pageSize": settings.site.page_size, "articles": search_articles},
+                                                   ensure_ascii=False, separators=(",", ":")) + ";\n", encoding="utf-8")
     months = sorted(groups, reverse=True)
     common = dict(site=settings.site, total=len(articles), months=months, last_success=last_success,
-                  source_url=settings.source.list_url, generated_at=now.isoformat(), keyword_rules=settings.filters.keywords)
+                  source_url=settings.source.list_url, generated_at=now.isoformat(), keyword_rules=settings.filters.keywords,
+                  asset_version=release.name)
 
     def write(path, template, **context):
         (release / path).write_text(env.get_template(template).render(**common, **context), encoding="utf-8")
@@ -86,12 +93,17 @@ def build(settings: Settings, *, now: datetime | None = None) -> Path:
                 link = lambda number: "/" if number == 1 else f"/page-{number}.html"
             write(filename, "index.html", articles=items[(page - 1) * size:page * size],
                   month=month, page=page, pages=pages,
+                  page_numbers=sorted({1, pages, *range(max(1, page - 2), min(pages, page + 2) + 1)}),
+                  page_url=link, first_page=link(1), page_pattern=link("__PAGE__"),
                   previous=link(page - 1) if page > 1 else None,
                   next_page=link(page + 1) if page < pages else None)
 
     listing(articles)
     for month in months:
         listing(groups[month], month=month)
+    write("search.html", "search.html", month=None, search_page=True, page=1, pages=1, page_numbers=[1],
+          page_url=lambda number: f"/search.html?page={number}", first_page="/search.html",
+          page_pattern="/search.html?page=__PAGE__", previous=None, next_page=None)
     for article in articles:
         write(f"posts/{article['id']}.html", "post.html", article=article, month=article["published_at"][:7])
     write("404.html", "404.html", month=None)
@@ -106,6 +118,11 @@ def build(settings: Settings, *, now: datetime | None = None) -> Path:
     for page in settings.output.glob("release-*/posts/*.html"):
         if page.stem in removed_ids and page.resolve().is_relative_to(output):
             page.unlink()
+    if removed_ids:
+        # Old full-text indexes must not retain removed articles after a rebuild.
+        for index in settings.output.glob("release-*/assets/search-index.js"):
+            if index.parent.parent != release and index.resolve().is_relative_to(output):
+                index.unlink()
     return release
 
 

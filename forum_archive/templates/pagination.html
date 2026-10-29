@@ -1,0 +1,15 @@
+<nav class="pagination" aria-label="翻页" data-first-page="{{ first_page }}" data-page-pattern="{{ page_pattern }}"{% if search_page %} hidden{% endif %}>
+  <div class="pagination-links">
+    {% if previous %}<a href="{{ previous }}" rel="prev">← 上一页</a>{% else %}<span>上一页</span>{% endif %}
+    {% for number in page_numbers %}
+      {% if not loop.first and number - loop.previtem > 1 %}<span aria-hidden="true">…</span>{% endif %}
+      {% if number == page %}<span class="page-number" aria-current="page">{{ number }}</span>{% else %}<a class="page-number" href="{{ page_url(number) }}" aria-label="第 {{ number }} 页">{{ number }}</a>{% endif %}
+    {% endfor %}
+    {% if next_page %}<a href="{{ next_page }}" rel="next">下一页 →</a>{% else %}<span>下一页</span>{% endif %}
+  </div>
+  <span class="page-position">第 {{ page }} / {{ pages }} 页</span>
+  <form class="page-jump">
+    <label>跳至 <input name="page" type="number" inputmode="numeric" min="1" max="{{ pages }}" value="{{ page }}" required aria-label="跳转页码"> 页</label>
+    <button type="submit">跳转</button>
+  </form>
+</nav>

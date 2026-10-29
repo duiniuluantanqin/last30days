@@ -13,6 +13,14 @@ while IFS= read -r thread_id || [ -n "$thread_id" ]; do
     esac
 done < "$manifest"
 
+# The new current index already excludes removed articles. Invalidate old
+# full-text indexes so retained releases cannot expose their removed bodies.
+if test -s "$manifest"; then
+    current_index=$(readlink -f "$root/current/assets/search-index.js" || true)
+    find "$root/releases" -mindepth 3 -maxdepth 3 -type f \
+        -path "$root/releases/release-*/assets/search-index.js" ! -path "$current_index" -delete
+fi
+
 # find does not follow symlink directories. Only release-*/posts/<id>.html
 # files directly within this deployment's releases tree are eligible.
 while IFS= read -r thread_id || [ -n "$thread_id" ]; do

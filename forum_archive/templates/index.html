@@ -12,6 +12,6 @@
 </article>
 {% endfor %}
 </div>
-<nav class="pagination" aria-label="翻页">{% if previous %}<a href="{{ previous }}">← 上一页</a>{% else %}<span>已经是第一页</span>{% endif %}{% if next_page %}<a href="{{ next_page }}">下一页 →</a>{% else %}<span>已经是最后一页</span>{% endif %}</nav>
 {% else %}<section class="empty-state"><span class="empty-mark" aria-hidden="true">页</span><h2>这里还没有收录的讨论</h2><p>完成首次采集后，文章会出现在这里。</p></section>{% endif %}
+{% include "pagination.html" %}
 {% endblock %}
