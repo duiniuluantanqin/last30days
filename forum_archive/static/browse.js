@@ -1,11 +1,12 @@
 (() => {
   "use strict";
+  const basePath = document.documentElement.dataset.basePath || "";
 
   const search = document.querySelector(".site-search");
   search.addEventListener("submit", event => {
     // Navigate with JS so existing CSP form-action 'none' remains compatible.
     event.preventDefault();
-    const url = new URL("/search.html", location.origin);
+    const url = new URL(`${basePath}/search.html`, location.origin);
     const query = search.elements.q.value.trim();
     if (query) url.searchParams.set("q", query);
     location.assign(url);
@@ -19,7 +20,7 @@
       if (!Number.isInteger(page)) return;
       const pagination = form.closest(".pagination");
       if (pagination.dataset.searchQuery !== undefined) {
-        const url = new URL("/search.html", location.origin);
+        const url = new URL(`${basePath}/search.html`, location.origin);
         url.searchParams.set("q", pagination.dataset.searchQuery);
         url.searchParams.set("page", page);
         location.assign(url);

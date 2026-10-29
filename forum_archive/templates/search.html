@@ -11,9 +11,9 @@
     <div class="article-info"><h2><a></a><span class="new-badge" title="最近一次爬取新增" aria-label="最近一次爬取新增">NEW</span></h2><p class="excerpt"></p><div class="article-meta"><span>技术讨论</span><span class="result-images"></span><time class="article-date"></time></div></div>
   </article>
 </template>
-<noscript><p>请启用 JavaScript 后搜索标题和正文，或<a href="/">返回文章列表</a>。</p></noscript>
+<noscript><p>请启用 JavaScript 后搜索标题和正文，或<a href="{{ base_path }}/">返回文章列表</a>。</p></noscript>
 {% endblock %}
 {% block scripts %}
-<script src="/assets/search-index.js?v={{ asset_version }}" defer></script>
-<script src="/assets/search.js" defer></script>
+<script src="{{ base_path }}/assets/search-index.js?v={{ asset_version }}" defer></script>
+<script src="{{ base_path }}/assets/search.js" defer></script>
 {% endblock %}

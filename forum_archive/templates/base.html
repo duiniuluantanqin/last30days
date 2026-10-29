@@ -1,29 +1,29 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-base-path="{{ base_path }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
   <title>{% block title %}{{ site.title }} · 讨论归档{% endblock %}</title>
   <meta name="description" content="{{ site.description }}">
-  <link rel="stylesheet" href="/assets/style.css">
+  <link rel="stylesheet" href="{{ base_path }}/assets/style.css">
 </head>
 <body>
   <a class="skip-link" href="#main">跳到正文</a>
   <div class="layout">
     <aside class="sidebar" aria-label="网站导航">
-      <a class="brand" href="/" aria-label="{{ site.title }}首页"><span class="brand-mark" aria-hidden="true">拾</span><span>{{ site.title }}</span></a>
+      <a class="brand" href="{{ base_path }}/" aria-label="{{ site.title }}首页"><span class="brand-mark" aria-hidden="true">拾</span><span>{{ site.title }}</span></a>
       <p class="tagline">{{ site.description }}</p>
-      <nav><a class="nav-link {% if not month %}active{% endif %}" href="/">全部讨论 <span>{{ total }}</span></a></nav>
+      <nav><a class="nav-link {% if not month %}active{% endif %}" href="{{ base_path }}/">全部讨论 <span>{{ total }}</span></a></nav>
       {% if months %}<div class="archive-nav"><p class="nav-label">按月翻阅</p>
-      {% for item in months %}<a class="month-link {% if month == item %}active{% endif %}" href="/archive/{{ item }}.html">{{ item[:4] }} 年 {{ item[5:] }} 月</a>{% endfor %}
+      {% for item in months %}<a class="month-link {% if month == item %}active{% endif %}" href="{{ base_path }}/archive/{{ item }}.html">{{ item[:4] }} 年 {{ item[5:] }} 月</a>{% endfor %}
       </div>{% endif %}
       <div class="sidebar-note"><span class="small-dot" aria-hidden="true"></span>{{ site.subtitle }}<br><a href="{{ source_url }}" target="_blank" rel="noopener noreferrer nofollow">查看来源版块</a></div>
     </aside>
     <div class="main-column">
-      <header class="topbar"><a href="/">讨论归档</a><div class="topbar-actions">
+      <header class="topbar"><a href="{{ base_path }}/">讨论归档</a><div class="topbar-actions">
         <span class="update-time">{% if last_success %}更新于 {{ last_success|date('%m-%d %H:%M') }}{% else %}等待首次更新{% endif %}</span>
-        <form class="site-search" role="search" action="/search.html" method="get">
+        <form class="site-search" role="search" action="{{ base_path }}/search.html" method="get">
           <input id="search-query" type="search" name="q" placeholder="搜索标题或正文" aria-label="搜索标题或正文关键词">
           <button type="submit">搜索</button>
         </form>
@@ -32,14 +32,14 @@
       <footer><span>{{ site.title }} · 个人讨论归档</span><span>按标题和正文规则收录 · 图片使用原链接</span></footer>
     </div>
   </div>
-  <script src="/assets/browse.js" defer></script>
+  <script src="{{ base_path }}/assets/browse.js" defer></script>
   {% block scripts %}{% endblock %}
   {% if site.github_repository %}
   <div id="keyword-menu" class="keyword-menu" role="group" aria-label="加入标题和正文黑名单" hidden
        data-repository="{{ site.github_repository }}" data-branch="{{ site.github_branch }}" data-keywords='{{ keyword_rules|tojson }}'>
     <a class="keyword-submit" title="复制关键词并打开黑名单文件，在末尾另起一行粘贴保存" target="_blank" rel="noopener noreferrer" hidden>Block</a>
   </div>
-  <script src="/assets/keyword-menu.js" defer></script>
+  <script src="{{ base_path }}/assets/keyword-menu.js" defer></script>
   {% endif %}
 </body>
 </html>

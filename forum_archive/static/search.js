@@ -1,5 +1,6 @@
 (() => {
   "use strict";
+  const basePath = document.documentElement.dataset.basePath || "";
 
   const query = new URLSearchParams(location.search);
   const text = (query.get("q") || "").trim();
@@ -34,7 +35,7 @@
     const title = row.querySelector("h2 a");
     title.textContent = article.title;
     if (!article.is_new) row.querySelector(".new-badge").remove();
-    title.href = `/posts/${encodeURIComponent(article.id)}.html`;
+    title.href = `${basePath}/posts/${encodeURIComponent(article.id)}.html`;
     row.querySelector(".excerpt").textContent = article.summary || "打开阅读原帖内容。";
     const images = row.querySelector(".result-images");
     if (article.image_count) images.textContent = `${article.image_count} 张外链图片`;
@@ -59,7 +60,7 @@
       node.className = "page-number";
       if (current) node.setAttribute("aria-current", "page");
       else {
-        const url = new URL("/search.html", location.origin);
+        const url = new URL(`${basePath}/search.html`, location.origin);
         url.searchParams.set("q", text);
         url.searchParams.set("page", number);
         node.href = url.pathname + url.search;

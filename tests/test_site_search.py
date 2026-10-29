@@ -116,6 +116,39 @@ class SiteSearchTests(unittest.TestCase):
         self.assertEqual(page.select_one('[aria-current="page"]').get_text(), "1")
         self.assertEqual(page.select_one('.page-jump input')["max"], "1")
 
+    def test_pages_prefix_covers_navigation_assets_and_pagination(self):
+        for number in range(3):
+            self.save(str(101 + number), f"标题{number}", '<p>普通正文</p><img src="https://cdn.example/original.jpg">')
+        release = build(self.settings, now=NOW, base_path="/last30days")
+        for filename in ("index.html", "page-2.html", "archive/2026-10.html", "posts/101.html", "search.html", "404.html"):
+            page = BeautifulSoup((release / filename).read_text(encoding="utf-8"), "html.parser")
+            self.assertEqual(page.html["data-base-path"], "/last30days")
+            for node in page.select("[href], [src], [action]"):
+                for attribute in ("href", "src", "action"):
+                    url = node.get(attribute, "")
+                    if url.startswith("/"):
+                        self.assertTrue(url.startswith("/last30days/"), (filename, url))
+                        self.assertTrue((release / url.removeprefix("/last30days/").split("?")[0]).exists())
+            self.assertEqual(page.select_one(".site-search")["action"], "/last30days/search.html")
+        for filename, first, pattern in (("page-2.html", "/last30days/", "/last30days/page-__PAGE__.html"),
+                                         ("archive/2026-10-2.html", "/last30days/archive/2026-10.html", "/last30days/archive/2026-10-__PAGE__.html")):
+            page = BeautifulSoup((release / filename).read_text(encoding="utf-8"), "html.parser")
+            self.assertEqual(page.select_one(".pagination")["data-first-page"], first)
+            self.assertEqual(page.select_one(".pagination")["data-page-pattern"], pattern)
+        post = (release / "posts/101.html").read_text(encoding="utf-8")
+        self.assertIn('src="https://cdn.example/original.jpg"', post)
+        self.assertFalse(list(release.rglob("*.sqlite3")))
+        default = build(self.settings, now=NOW)
+        page = BeautifulSoup((default / "index.html").read_text(encoding="utf-8"), "html.parser")
+        self.assertEqual(page.select_one(".brand")["href"], "/")
+        self.assertIsNotNone(page.select_one('script[src="/assets/browse.js"]'))
+
+    def test_invalid_pages_prefix_is_rejected_before_building(self):
+        for path in ("last30days", "//example.com", "/../other", "/last30days?query", "/last30days/"):
+            with self.subTest(path=path), self.assertRaises(ValueError):
+                build(self.settings, now=NOW, base_path=path)
+        self.assertFalse(self.settings.output.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

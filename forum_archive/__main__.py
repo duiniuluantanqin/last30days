@@ -59,6 +59,7 @@ def parser():
         command.add_argument("--demo", action="store_true", help="使用独立演示数据")
         if name == "build":
             command.add_argument("--path-file", help="将生成目录写到指定文件，供自动部署使用")
+            command.add_argument("--base-path", default="", help="站点路径前缀，如 /last30days（默认部署在根目录）")
         if name == "serve":
             command.add_argument("--host", default="127.0.0.1")
             command.add_argument("--port", type=int, default=8000)
@@ -87,7 +88,7 @@ def main(argv=None):
             print(f"网站已生成：{release}")
             return 2 if stats["errors"] else 0
         if args.command in {"build", "demo"}:
-            release = create_demo(settings) if args.command == "demo" else build(settings)
+            release = create_demo(settings) if args.command == "demo" else build(settings, base_path=args.base_path)
             if getattr(args, "path_file", None):
                 Path(args.path_file).write_text(str(release.resolve()), encoding="utf-8")
             print(f"网站已生成：{release}")

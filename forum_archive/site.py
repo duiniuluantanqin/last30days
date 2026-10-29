@@ -19,7 +19,9 @@ from .store import Store
 PACKAGE = Path(__file__).parent
 
 
-def build(settings: Settings, *, now: datetime | None = None) -> Path:
+def build(settings: Settings, *, now: datetime | None = None, base_path: str = "") -> Path:
+    if not re.fullmatch(r"(?:/[A-Za-z0-9_.-]+)*", base_path) or any(part in {".", ".."} for part in base_path.split("/")):
+        raise ValueError("base_path 必须为空或 /last30days 形式的路径，末尾不带斜线")
     now = now or datetime.now(ZoneInfo(settings.source.timezone))
     with Store(settings, now) as store:
         store.apply_filter(settings.filters)
@@ -87,7 +89,7 @@ def build(settings: Settings, *, now: datetime | None = None) -> Path:
     months = sorted(groups, reverse=True)
     common = dict(site=settings.site, total=len(articles), months=months, last_success=last_success,
                   source_url=settings.source.list_url, generated_at=now.isoformat(), keyword_rules=settings.filters.keywords,
-                  asset_version=release.name)
+                  asset_version=release.name, base_path=base_path)
 
     def write(path, template, **context):
         (release / path).write_text(env.get_template(template).render(**common, **context), encoding="utf-8")
@@ -98,10 +100,10 @@ def build(settings: Settings, *, now: datetime | None = None) -> Path:
         for page in range(1, pages + 1):
             if month:
                 filename = f"archive/{month}.html" if page == 1 else f"archive/{month}-{page}.html"
-                link = lambda number: f"/archive/{month}.html" if number == 1 else f"/archive/{month}-{number}.html"
+                link = lambda number: f"{base_path}/archive/{month}.html" if number == 1 else f"{base_path}/archive/{month}-{number}.html"
             else:
                 filename = "index.html" if page == 1 else f"page-{page}.html"
-                link = lambda number: "/" if number == 1 else f"/page-{number}.html"
+                link = lambda number: f"{base_path}/" if number == 1 else f"{base_path}/page-{number}.html"
             write(filename, "index.html", articles=items[(page - 1) * size:page * size],
                   month=month, page=page, pages=pages,
                   page_numbers=sorted({1, pages, *range(max(1, page - 2), min(pages, page + 2) + 1)}),
@@ -113,8 +115,8 @@ def build(settings: Settings, *, now: datetime | None = None) -> Path:
     for month in months:
         listing(groups[month], month=month)
     write("search.html", "search.html", month=None, search_page=True, page=1, pages=1, page_numbers=[1],
-          page_url=lambda number: f"/search.html?page={number}", first_page="/search.html",
-          page_pattern="/search.html?page=__PAGE__", previous=None, next_page=None)
+          page_url=lambda number: f"{base_path}/search.html?page={number}", first_page=f"{base_path}/search.html",
+          page_pattern=f"{base_path}/search.html?page=__PAGE__", previous=None, next_page=None)
     for article in articles:
         write(f"posts/{article['id']}.html", "post.html", article=article, month=article["published_at"][:7])
     write("404.html", "404.html", month=None)

@@ -1,5 +1,6 @@
 """Optional Chrome integration check using temporary local articles only."""
 
+import argparse
 from dataclasses import replace
 from datetime import datetime, timedelta
 from functools import partial
@@ -22,11 +23,21 @@ from forum_archive.store import Store
 
 
 class QuietHandler(ArchiveHandler):
+    def do_GET(self):
+        if not self.path.startswith(self.base_path + "/"):
+            self.send_error(404)
+            return
+        self.path = self.path[len(self.base_path):]
+        super().do_GET()
+
     def log_message(self, *args):
         pass
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--base-path", default="")
+    base_path = parser.parse_args().base_path
     root = Path(__file__).resolve().parents[1]
     now = datetime(2026, 10, 29, 12, tzinfo=ZoneInfo("Asia/Shanghai"))
     with tempfile.TemporaryDirectory() as temporary, sync_playwright() as playwright:
@@ -48,11 +59,13 @@ def main():
                 store.discover(Thread(str(101 + index), settings.source.list_url, title, date.isoformat()), now)
                 store.save_post(str(101 + index), Post(title, date.isoformat(), body, "简短摘要", 1), now, False)
             store.set("new_article_ids", '["101", "107"]')
-        build(settings, now=now)
-        server = ThreadingHTTPServer(("127.0.0.1", 0), partial(QuietHandler, output=settings.output))
+        build(settings, now=now, base_path=base_path)
+        handler = type("MountedHandler", (QuietHandler,), {"base_path": base_path})
+        server = ThreadingHTTPServer(("127.0.0.1", 0), partial(handler, output=settings.output))
         thread = ServerThread(target=server.serve_forever, daemon=True)
         thread.start()
         origin = f"http://127.0.0.1:{server.server_port}"
+        site_url = origin + base_path
         try:
             chrome = Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe")
             browser = playwright.chromium.launch(headless=True, **({"executable_path": str(chrome)} if chrome.is_file() else {}))
@@ -84,7 +97,7 @@ def main():
             def current(number):
                 assert page.locator('[aria-current="page"]').inner_text() == str(number)
 
-            page.goto(origin, wait_until="networkidle")
+            page.goto(site_url + "/", wait_until="networkidle")
             search_box = page.locator(".site-search").bounding_box()
             topbar = page.locator(".topbar").bounding_box()
             assert search_box["width"] <= 240 and search_box["height"] <= 40
@@ -95,15 +108,15 @@ def main():
             assert page.locator(".article-row").first.locator(".new-badge").inner_text() == "NEW"
             assert page.locator(".article-row").nth(1).locator(".new-badge").count() == 0
             jump(4)
-            assert urlsplit(page.url).path == "/page-4.html"
+            assert urlsplit(page.url).path == base_path + "/page-4.html"
             current(4)
             assert page.locator(".article-row").count() == 1
             jump(1)
-            assert urlsplit(page.url).path == "/"
-            page.locator('.month-link[href="/archive/2026-10.html"]').click()
+            assert urlsplit(page.url).path == base_path + "/"
+            page.locator(f'.month-link[href="{base_path}/archive/2026-10.html"]').click()
             assert page.locator(".new-badge").count() == 1
             jump(3)
-            assert urlsplit(page.url).path == "/archive/2026-10-3.html"
+            assert urlsplit(page.url).path == base_path + "/archive/2026-10-3.html"
             current(3)
             page.locator('.article-info h2 a').first.click()
             search("标题专属")
@@ -111,6 +124,7 @@ def main():
             assert "标题专属" in page.locator("#search-results h2").inner_text()
             assert page.locator("#search-results .new-badge").count() == 1
             page.locator("#search-results h2 a").click()
+            assert urlsplit(page.url).path == base_path + "/posts/101.html"
             assert page.locator(".post-heading .new-badge").inner_text() == "NEW"
             search("全文目标")
             assert "7 篇" in page.locator("#search-status").inner_text()
@@ -140,9 +154,9 @@ def main():
             page.wait_for_load_state("networkidle")
             current(2)
             assert parse_qs(urlsplit(page.url).query)["q"] == ["ＳＥＡＲＣＨＴＡＧ"]
-            page.goto(origin + "/search.html?q=全文目标&page=999", wait_until="networkidle")
+            page.goto(site_url + "/search.html?q=全文目标&page=999", wait_until="networkidle")
             current(4)
-            page.goto(origin + "/search.html?q=全文目标&page=bad", wait_until="networkidle")
+            page.goto(site_url + "/search.html?q=全文目标&page=bad", wait_until="networkidle")
             current(1)
             output = root / ".cache/screenshots"
             output.mkdir(parents=True, exist_ok=True)
@@ -156,7 +170,7 @@ def main():
             assert "请输入关键词" in page.locator("#search-status").inner_text()
             assert page.locator(".pagination").is_hidden()
             context.route("**/assets/search-index.js*", lambda route: route.fulfill(content_type="text/javascript", body=""))
-            page.goto(origin + "/search.html?q=全文目标", wait_until="networkidle")
+            page.goto(site_url + "/search.html?q=全文目标", wait_until="networkidle")
             assert "搜索数据加载失败" in page.locator("#search-status").inner_text()
             assert not errors, errors
             browser.close()

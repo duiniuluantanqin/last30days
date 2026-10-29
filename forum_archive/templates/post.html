@@ -2,9 +2,9 @@
 {% block title %}{{ article.title }} · {{ site.title }}{% endblock %}
 {% block content %}
 <article class="reading-page">
-  <a class="back-link" href="/">← 返回讨论列表</a>
+  <a class="back-link" href="{{ base_path }}/">← 返回讨论列表</a>
   <header class="post-heading"><p class="eyebrow">技术讨论 / {{ article.published_at|date('%Y.%m.%d') }}</p><h1>{{ article.title }}{% if article.is_new %}<span class="new-badge" title="最近一次爬取新增" aria-label="最近一次爬取新增">NEW</span>{% endif %}</h1><div class="post-meta"><time datetime="{{ article.published_at }}">{{ article.published_at|date('%Y-%m-%d %H:%M') }}</time><a href="{{ article.url }}" target="_blank" rel="noopener noreferrer nofollow">阅读原帖</a></div></header>
   <div class="prose">{{ article.body_html|safe }}</div>
-  <a class="back-link end-link" href="/">← 继续翻阅讨论</a>
+  <a class="back-link end-link" href="{{ base_path }}/">← 继续翻阅讨论</a>
 </article>
 {% endblock %}

@@ -9,6 +9,7 @@
 - [文件与数据](#文件与数据)
 - [测试](#测试)
 - [GitHub Actions 与 ECS](#github-actions-与-ecs本地测试不会执行部署)
+- [独立发布到 GitHub Pages](#独立发布到-github-pages)
 
 ## 本地运行（Windows）
 
@@ -138,3 +139,25 @@ SQLite 包含结构化正文与状态，是权威归档，需要备份。公开�
 **费用与磁盘：** 源站的 10 秒请求间隔使默认 60 篇上限的一轮任务可能运行十余分钟。每小时运行请先测量实际时长，再按 GitHub 当前套餐评估，不能假设私有仓库免费额度足够。历史网站版本及上传残留按上述规则自动清理。SQLite 会清除过期正文并保留去重元数据；数据库文件不会因此立即缩小，元数据仍会随采集增加。备份及近期上传包可能含有原始内容，不能将它们公开作为网站根目录。
 
 本项目不包含登录、验证码绕过或访问限制规避。若 GitHub 运行环境无法正常访问来源，工作流会报告失败，需要重新评估执行环境。
+
+## 独立发布到 GitHub Pages
+
+`.github/workflows/pages.yml` 是额外的 Pages 工作流，不修改原来的 `archive.yml`、ECS 发布步骤或 Caddy 配置。它在 `master` 分支的 **Hourly archive** 工作流结束后自动运行，也可通过 **Actions → Publish GitHub Pages → Run workflow** 选择 `master` 手动运行。自动触发需要该工作流已存在于默认分支。
+
+Pages 工作流只读取 ECS 的 `state/archive.sqlite3` 快照，使用当前 `master` 的黑名单和 30 天保留规则重新构建，不采集源站、不向 ECS 写回数据库或网页。即使 Hourly archive 因采集失败而结束，也会尝试发布 ECS 已保存的归档，避免漏掉采集前完成的下架。若 ECS 无法连接或尚无数据库则失败，不用空数据库覆盖已有 Pages。两套发布不构成同时成功的事务；Pages 失败可单独重试。
+
+首次启用：
+
+1. 在仓库 **Settings → Pages → Build and deployment → Source** 选择 **GitHub Actions**。私有仓库需确认当前 GitHub 套餐支持 Pages；Pages 的访问权限以仓库 Pages 设置为准。
+2. 沿用现有 `DEPLOY_HOST`、`DEPLOY_USER`、`DEPLOY_SSH_KEY`、`DEPLOY_KNOWN_HOSTS` Secrets，以及可选 `DEPLOY_ROOT`、`DEPLOY_PORT` Variables，无需额外的个人访问令牌。
+3. 将代码推送到默认分支 `master`。首次应先让 Hourly archive 保存数据库，再运行 Publish GitHub Pages。若 `github-pages` environment 配置了审批或部署分支限制，需在仓库设置中允许 `master` 部署。
+4. 发布成功后访问 <https://duiniuluantanqin.github.io/last30days/>，确认首页样式、月份归档、文章、全文搜索和页码跳转。
+
+`actions/configure-pages` 提供站点的 `base_path`，构建时通过 `build --base-path` 传入。默认项目站点使用 `/last30days`；设置独立域名后根据 Pages 返回的路径构建。普通 `build` 和 ECS 发布不传此参数，继续使用根目录路径。只上传本次构建的 `release-*` 目录内容，不上传 `site/` 的历史版本、SQLite、凭据或日志；Pages artifact 保留 1 天。Pages 每次部署完整站点，当前版本不包含已屏蔽或过期文章；ECS 的历史版本清理仍由原流程负责。
+
+本地验证路径适配（临时数据库，不访问源站）：
+
+```powershell
+.venv/Scripts/python.exe -X utf8 tests/browser_site_search.py
+.venv/Scripts/python.exe -X utf8 tests/browser_site_search.py --base-path /last30days
+```

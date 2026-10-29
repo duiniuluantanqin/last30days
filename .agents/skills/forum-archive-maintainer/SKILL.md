@@ -22,6 +22,7 @@ description: 维护本仓库的论坛采集、标题与正文黑名单、图片�
 - Block：检查 `static/keyword-menu.js` 和 `templates/base.html`。单按钮复制划词并打开 `blacklist/keywords.txt` 的 GitHub 编辑页，由用户在末尾粘贴保存；目标仓库和分支由 `site.github_repository`、`site.github_branch` 配置。不创建 Issue 或 PR，不引入 OAuth 服务或浏览器令牌。普通 HTTP 须验证复制及失败提示，不得恢复逐词生成哈希文件的流程。
 - 历史文章清理或发布：检查 `site.py`、`scripts/remote.py`、`scripts/purge-blocked.sh` 和 `archive.yml`。黑名单变更须先应用到恢复的服务器数据库，再生成新站点和删除清单；旧 HTML 通过数字帖子 ID 精确删除。源站访问失败不能阻止已完成的下架。不要把公开输出目录或 Actions 缓存当权威数据库。
 - 流水线采集由 `schedule` 和 `workflow_dispatch` 事件执行；两者均先恢复 ECS 状态、重筛、构建和清理发布，再采集并发布新内容。push 事件只清理发布，合并关键词 PR 不触发源站采集。
+- GitHub Pages 使用独立的 `pages.yml`，在 Hourly archive 结束后或手动触发时只读恢复 ECS 数据库、重筛和发布，不重复采集或写回 ECS。通过 `build --base-path` 适配项目站点前缀；默认构建仍使用根路径。只上传当次公开版本目录，设置与验证见运维说明。
 - 磁盘保留与备份：`remote.py` 在切换前滚动备份旧状态到 `state/archive.sqlite3.bak`，失败不得继续切站。发布和文章下架成功后才运行 `scripts/prune-deployments.sh`，保留最新 3 个数字编号版本并额外保护 `current`，清理本次上传及超过 24 小时的已知上传残留；不删除状态目录，不遍历软链接或无关文件。相关真实 shell 与模拟发布测试在 `tests/test_deployment_retention.py`。
 
 ## 验证
