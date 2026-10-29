@@ -1,7 +1,7 @@
 # Add this as a separate site block alongside your existing website.
 # Replace the domain; do not replace your entire Caddyfile.
 archive.example.com {
-    root * /srv/forum-archive/current
+    root * /var/www/html/last30days/current
     encode zstd gzip
     header {
         X-Content-Type-Options nosniff

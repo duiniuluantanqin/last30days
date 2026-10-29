@@ -22,11 +22,11 @@ class Remote:
             raise ValueError("DEPLOY_HOST 必须为域名或 IPv4 地址")
         if not re.fullmatch(r"[a-z_][a-z0-9_-]*", user) or user == "root":
             raise ValueError("请使用非 root 的专用部署用户")
-        self.root = os.environ.get("DEPLOY_ROOT", "/srv/forum-archive").rstrip("/")
+        self.root = os.environ.get("DEPLOY_ROOT", "/var/www/html/last30days").rstrip("/")
         if (not re.fullmatch(r"/[A-Za-z0-9_./-]+", self.root)
                 or ".." in PurePosixPath(self.root).parts
                 or len(PurePosixPath(self.root).parts) < 3):
-            raise ValueError("DEPLOY_ROOT 必须为独立的绝对网站目录，如 /srv/forum-archive")
+            raise ValueError("DEPLOY_ROOT 必须为独立的绝对网站目录，如 /var/www/html/last30days")
         port = int(os.environ.get("DEPLOY_PORT", "22"))
         if not 1 <= port <= 65535:
             raise ValueError("无效的 DEPLOY_PORT")

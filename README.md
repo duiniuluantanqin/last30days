@@ -111,7 +111,7 @@ SQLite 包含结构化正文与状态，是权威归档，需要备份。公开�
 
 `test.yml` 在 push/PR 执行离线测试。`archive.yml` 在默认分支每小时运行，也支持手动触发；定时任务可能延迟，不承诺严格准点。
 
-启用线上任务前，需要在 Ubuntu ECS 上准备独立网站目录和**非 root 部署用户**，使其可写 `/srv/forum-archive`；Caddy 用户需要能读取公开的 `current` 版本。新域名解析到 ECS。将 `deploy/Caddyfile.example` 的站点块追加到现有配置，替换域名后验证并重载，不能直接覆盖现有网站的整份配置。
+启用线上任务前，需要在 Ubuntu ECS 上准备独立网站目录和**非 root 部署用户**，使其可写 `/var/www/html/last30days`；Caddy 用户需要能读取公开的 `current` 版本。新域名解析到 ECS。将 `deploy/Caddyfile.example` 的站点块追加到现有配置，替换域名后验证并重载，不能直接覆盖现有网站的整份配置。
 
 在 GitHub 仓库配置这些 Secrets：
 
@@ -122,10 +122,10 @@ SQLite 包含结构化正文与状态，是权威归档，需要备份。公开�
 | `DEPLOY_SSH_KEY` | 专用 SSH 私钥，仅供该用户登录 |
 | `DEPLOY_KNOWN_HOSTS` | 通过可信方式核验的 ECS SSH 主机公钥记录；自定义端口应使用对应记录格式 |
 
-可选 Repository Variables：`DEPLOY_ROOT`（默认 `/srv/forum-archive`）、`DEPLOY_PORT`（默认 `22`）。服务器端目录结构：
+可选 Repository Variables：`DEPLOY_ROOT`（默认 `/var/www/html/last30days`）、`DEPLOY_PORT`（默认 `22`）。服务器端目录结构：
 
 ```text
-/srv/forum-archive/
+/var/www/html/last30days/
   current -> releases/release-...    Caddy 唯一公开根目录
   releases/                         生成的网站版本
   state/archive.sqlite3             权威数据与进度，不公开
