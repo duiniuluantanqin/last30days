@@ -92,7 +92,7 @@ def main():
             assert topbar["y"] <= search_box["y"] < topbar["y"] + topbar["height"]
             current(1)
             assert page.locator(".new-badge").count() == 1
-            assert page.locator(".article-row").first.locator(".new-badge").inner_text() == "New"
+            assert page.locator(".article-row").first.locator(".new-badge").inner_text() == "NEW"
             assert page.locator(".article-row").nth(1).locator(".new-badge").count() == 0
             jump(4)
             assert urlsplit(page.url).path == "/page-4.html"
@@ -111,7 +111,7 @@ def main():
             assert "标题专属" in page.locator("#search-results h2").inner_text()
             assert page.locator("#search-results .new-badge").count() == 1
             page.locator("#search-results h2 a").click()
-            assert page.locator(".post-heading .new-badge").inner_text() == "New"
+            assert page.locator(".post-heading .new-badge").inner_text() == "NEW"
             search("全文目标")
             assert "7 篇" in page.locator("#search-status").inner_text()
             assert page.locator("#search-results .article-row").count() == 2

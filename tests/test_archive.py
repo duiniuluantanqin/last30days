@@ -185,7 +185,7 @@ class ArchiveTests(unittest.TestCase):
         self.assertEqual(self.new_ids(build(self.settings, now=NOW + timedelta(minutes=5))), {"101"})
         for filename in ("archive/2026-10.html", "posts/101.html"):
             page = BeautifulSoup((first / filename).read_text(encoding="utf-8"), "html.parser")
-            self.assertEqual(page.select_one(".new-badge").get_text(), "New")
+            self.assertEqual(page.select_one(".new-badge").get_text(), "NEW")
         self.assertNotIn("new-badge", (first / "posts/100.html").read_text(encoding="utf-8"))
         index = (first / "assets/search-index.js").read_text(encoding="utf-8")
         data = json.loads(index.removeprefix("window.archiveSearchIndex = ").removesuffix(";\n"))
