@@ -9,7 +9,7 @@ import shutil
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, NavigableString
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from .config import Settings
@@ -54,6 +54,18 @@ def build(settings: Settings, *, now: datetime | None = None) -> Path:
             article["body_html"] = str(content)
             article["summary"] = " ".join(content.get_text(" ", strip=True).split())[:180]
             article["image_count"] = 0
+        elif sum(not char.isspace() for char in content.get_text()) >= 200:
+            trailing_images = []
+            for node in reversed(list(content.descendants)):
+                if node.name == "img":
+                    trailing_images.append(node)
+                elif type(node) is NavigableString and node.strip():
+                    break
+            if trailing_images and len(trailing_images) == len(content.select("img")):
+                for image in trailing_images:
+                    image.decompose()
+                article["body_html"] = str(content)
+                article["image_count"] = 0
         groups[article["published_at"][:7]].append(article)
     months = sorted(groups, reverse=True)
     common = dict(site=settings.site, total=len(articles), months=months, last_success=last_success,

@@ -6,6 +6,8 @@
 
 主帖正文出现“防水图”时，公开页面屏蔽该文章的全部图片，并从正文和列表摘要中移除“防水图”三个字，保留其余文字，隐藏图片数量和图片加载提示。支持文字跨 HTML 标签或以实体编码出现。该规则也适用于已经采集的文章，重新运行 `build` 即可生效；数据库中的原始归档不变。
 
+正文至少包含 **200 个非空白字符**，且**所有图片都在正文末尾、图片后没有文字**时，公开页面也会屏蔽全部图片，不限制图片数量。空白、换行和图片外层的链接或容器不影响判定；如果正文开头或中间有图片，或图片后有说明文字，则不应用此规则。该规则同样适用于已有归档，隐藏后同步移除图片数量和加载提示，不修改数据库原文。
+
 ## 本地运行（Windows）
 
 需要 Python 3.11+。本项目已用 Python 3.14 本地验证，Actions 使用 Python 3.12。
@@ -72,7 +74,7 @@ python3 -m venv .venv
 | 色情类 | `data/sensitive-words/sw_色情类.txt` |
 | 广告类 | `data/sensitive-words/sw_广告.txt` |
 
-上游词库、`config.toml` 的 `blocked_keywords` 和本项目 `blacklist/*.txt` 会合并、规范化并去重，按**标题或正文包含词**匹配，任一命中就屏蔽整篇。其他上游分类不加载。上游文件路径在 `[filter].keyword_files` 中指定；缺失时程序会报错，不会静默跳过。网页 `Block` 提交仍写入本项目的 `blacklist/`，不修改上游子模块。
+本地关键词统一维护在 `blacklist/keywords.txt`，原配置中的关键词及旧 Block 哈希文件已迁入该文件，并补充了色情、招嫖引流及广告话术（含常见繁体与英文写法）。本地词与上游词库会合并、规范化并去重，按**标题或正文包含词**匹配，任一命中就屏蔽整篇。其他上游分类不加载。上游文件路径在 `[filter].keyword_files` 中指定；缺失时程序会报错，不会静默跳过。网页 `Block` 提交仍更新本项目的 `blacklist/keywords.txt`，不修改上游子模块。
 
 `archive.yml` 和 `test.yml` 都会先检出子模块，再执行以下更新命令；因此定时、push、PR 测试、手动执行和 `cleanup_only` 运行都会使用上游 `main` 的最新词库，并记录实际 commit SHA：
 
@@ -94,7 +96,7 @@ git submodule update --init --remote --depth 1 -- third_party/multilingual-sensi
 - `crawl.backfill_pages_per_run`：每轮历史列表扫描预算；断点保存到 ECS 上的状态文件。按最后回复时间判断历史扫描边界；不能因为一页主帖创建日期较旧就提前结束。
 - `crawl.max_posts_per_run`：每轮主帖获取预算；发现的合格链接会先保存，再分批获取。默认 60 篇，未完成任务下一轮继续，不会标成已完成。
 - `crawl.max_attempts`：主帖最大跨轮重试次数，默认 3；耗尽后仍保留错误记录。人工重试：`python -m forum_archive crawl --retry-failed`。
-- `filter.blocked_keywords`：标题或正文包含词；会先统一全半角、英文大小写，去掉空白和零宽格式字符。
+- `blacklist/keywords.txt`：本地标题或正文包含词，一行一个；会先统一全半角、英文大小写，去掉空白和零宽格式字符。配置中的 `filter.blocked_keywords` 仍兼容读取，当前配置已迁出该列表。
 - `filter.blocked_patterns`：分别作用于规范化标题和正文的正则表达式。默认不启用；无效正则会在启动时报告。
 - `filter.keyword_files`：额外的本地逐行词库文件，路径相对于配置文件目录；当前只指定上游色情类和广告类。
 - `site`：网站名称、说明和每页数量。
@@ -124,7 +126,7 @@ git submodule update --init --remote --depth 1 -- third_party/multilingual-sensi
 
 网站不保存令牌，也不会自动提交、合并 PR。私有仓库仅对拥有访问权限的用户开放此流程。若浏览器阻止自动复制，会弹出包含所选关键词的对话框，手动复制后继续操作。
 
-新增词统一追加到 `blacklist/keywords.txt`，不再逐词新建文件；原有 `config.toml` 黑名单及其他 `blacklist/*.txt` 仍有效。PR 合并到 `master` 后会触发流水线，先应用新规则及 30 天保留规则并发布、删除命中或过期的旧文章页面，再采集新帖子；源站抓取失败不会撤销已完成的下架。关键词同时匹配**标题和正文**，已有文章也会按全文重新筛选。
+新增词统一追加到 `blacklist/keywords.txt`，不再逐词新建文件；原有配置词和旧哈希文件中的词已合并到此文件，加载器仍兼容配置及其他 `blacklist/*.txt`。PR 合并到 `master` 后会触发流水线，先应用新规则及 30 天保留规则并发布、删除命中或过期的旧文章页面，再采集新帖子；源站抓取失败不会撤销已完成的下架。关键词同时匹配**标题和正文**，已有文章也会按全文重新筛选。
 
 `config.toml` 的 `[site]` 中配置 `github_repository = "owner/repo"` 和 `github_branch = "默认分支名"`。当前已按仓库 origin 配置为 `duiniuluantanqin/last30days`、`master`；更换仓库或分支时同步修改。仓库留空会隐藏此功能。
 
@@ -149,6 +151,8 @@ site/release-*/                  生成的公开网页（不提交 Git）
 site/current.json                本地当前版本指针
 scripts/remote.py                可选的 ECS 状态恢复与发布
 deploy/Caddyfile.example         新域名站点配置示例
+AGENTS.md                       项目维护约束、代码入口和验证命令
+.agents/skills/forum-archive-maintainer/SKILL.md  项目专用维护技能
 tests/                          离线回归测试，不访问源站
 ```
 

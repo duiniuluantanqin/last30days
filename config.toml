@@ -19,7 +19,7 @@ max_attempts = 3
 [filter]
 # Keywords and patterns match titles and full body text, not HTML attributes.
 # Customize them for your own inclusion criteria. Images are NOT classified.
-blocked_keywords = ["色情", "成人视频", "约炮", "約炮", "裸聊", "AV片", "av女优", "av女優", "援交", "招嫖", "性爱", "性愛", "淫乱", "淫亂", "裸照", "露点", "露點", "屁股", "内射", "內射", "性交", "性行為", "肛交", "肛門", "口交", "口淫", "手淫", "自慰", "性器官", "陰部", "陰道", "陰莖", "乳房", "乳頭", "乳头", "嫩", "啪啪", "口技", "穴", "向往之地", "摄影师", "偷拍", "偷拍狂", "偷拍者", "偷拍影片", "偷拍视频", "群交", "乱交", "亂倫", "强奸", "強姦", "未成年", "青少年", "学生", "中学生", "高中生", "幼女", "萝莉", "萝莉控", "lolita", "恋童", "恋童癖", "pedophile", "pedophilia", "车牌", "学妹", "一夜精品", "约炮群", "援交群", "裸聊群", "打炮"]
+# Local keywords: blacklist/keywords.txt (one keyword per line).
 blocked_patterns = []
 keyword_files = [
     "third_party/multilingual-sensitive-words/data/sensitive-words/sw_色情类.txt",

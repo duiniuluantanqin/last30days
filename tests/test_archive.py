@@ -294,6 +294,42 @@ class ArchiveTests(unittest.TestCase):
         self.assertIsNotNone(page.select_one(".image-note"))
         self.assertIn("1 张外链图片", (release / "index.html").read_text(encoding="utf-8"))
 
+    def test_long_articles_hide_images_only_when_all_images_are_at_the_end(self):
+        image = '<a href="https://cdn.example/original.jpg"><img src="https://cdn.example/original.jpg"></a>'
+        cases = [
+            ("<p>" + "文" * 200 + "</p>" + image, 0),
+            ("<p>" + "文" * 200 + "</p><div>" + (image + "<br> \n") * 5 + "</div>", 0),
+            ("<p>" + "文" * 199 + "</p>" + image, 1),
+            ("<p>" + "文 " * 199 + "</p>" + image, 1),
+            ("<p>" + "文" * 200 + "</p>" + image * 6, 0),
+            ("<p>" + "文" * 200 + "</p>" + image * 2 + "<p>图片说明</p>", 2),
+            (image + "<p>" + "文" * 200 + "</p>" + image * 2, 3),
+            ("<p>" + "文" * 200 + "</p>", 0),
+            ("<p>" + "文" * 100 + "</p>" + image + "<p>" + "文" * 100 + "</p>" + image, 2),
+        ]
+        with Store(self.settings, NOW) as store:
+            for index, (body, _) in enumerate(cases, 301):
+                thread_id = str(index)
+                store.discover(Thread(thread_id, SOURCE, "正常讨论", NOW.isoformat()), NOW)
+                store.save_post(thread_id, Post("正常讨论", NOW.isoformat(), body, "正文摘要", body.count("<img")), NOW, False)
+        release = build(self.settings, now=NOW)
+        listing = BeautifulSoup((release / "index.html").read_text(encoding="utf-8"), "html.parser")
+        for index, (body, remaining) in enumerate(cases, 301):
+            with self.subTest(thread_id=index):
+                page = BeautifulSoup((release / f"posts/{index}.html").read_text(encoding="utf-8"), "html.parser")
+                self.assertEqual(len(page.select(".prose img")), remaining)
+                self.assertEqual(page.select_one(".prose").get_text(), BeautifulSoup(body, "html.parser").get_text())
+                self.assertEqual(bool(page.select_one(".image-note")), bool(remaining))
+                row = listing.select_one(f'.article-info a[href="/posts/{index}.html"]').find_parent("article")
+                self.assertEqual("张外链图片" in row.get_text(), bool(remaining))
+                if remaining:
+                    self.assertIn(f"{remaining} 张外链图片", row.get_text())
+        with Store(self.settings, NOW) as store:
+            for article in store.articles():
+                body, _ = cases[int(article["id"]) - 301]
+                self.assertEqual(article["body_html"], body)
+                self.assertEqual(article["image_count"], body.count("<img"))
+
     def test_end_to_end_no_image_requests_and_idempotent_replay(self):
         html = listing([("101", "正常讨论", NOW, NOW), ("102", "色情帖子", NOW, NOW), ("103", "旧帖", NOW - timedelta(days=40), NOW)])
         routes = {"/thread0806.php?page=1": html,
