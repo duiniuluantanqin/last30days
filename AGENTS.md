@@ -18,6 +18,7 @@
 - “防水图”命中时隐藏全部图片，并移除正文及摘要中的这三个字；正文至少 200 个非空白字符且所有图片只出现在文末时，也隐藏全部图片，不限张数。正文中间配图或图片后有文字时不应用后一规则。
 - 按原帖发布时间滚动保留 30 天。帖子 ID 和状态用于去重；不要用文件修改时间、抓取时间或最后回复时间代替发布时间。
 - 发布链路先恢复 ECS 状态、应用黑名单和保留规则并发布；仅定时事件继续采集，push 和手动事件只清理发布。命中或过期 ID 经私有清单删除历史版本的对应文章 HTML；清理范围不能扩大到其他网站或任意路径。
+- 替换服务器状态前滚动备份到 `state/archive.sqlite3.bak`。发布成功后保留最新 3 个版本并额外保护 `current`，删除本次上传文件和超过 24 小时的已知上传残留；不能清理 `state` 或跟随软链接删除外部内容。
 - 关键词统一维护在 `blacklist/keywords.txt`，已迁入原上游色情和广告分类的规则；无 Git 子模块或自动上游更新依赖。迁入词库的来源和许可证见 `blacklist/SOURCES.md`。
 
 ## 代码入口与验证
@@ -25,7 +26,7 @@
 - `forum_archive/source.py`：页面解析、主帖提取、HTML 清理。
 - `forum_archive/config.py`、`store.py`、`crawler.py`：规则加载、历史重筛、去重和采集。
 - `forum_archive/site.py`、`templates/`、`static/`：构建、图片展示、本地预览及 Block 菜单。
-- `scripts/remote.py`、`scripts/purge-blocked.sh`、`.github/workflows/`：发布和服务器旧页面删除。
+- `scripts/remote.py`、`scripts/purge-blocked.sh`、`scripts/prune-deployments.sh`、`.github/workflows/`：发布、旧页面删除、版本和上传保留策略。
 - 维护这些功能时参考项目技能：[forum-archive-maintainer](.agents/skills/forum-archive-maintainer/SKILL.md)。
 
 Windows 离线测试：`.venv/Scripts/python.exe -X utf8 -m unittest discover -s tests -v`。

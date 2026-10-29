@@ -95,19 +95,26 @@ class Remote:
         cleanup = Path(".cache/deploy/purge-blocked.sh")
         cleanup.write_bytes(Path(__file__).with_name("purge-blocked.sh").read_bytes().replace(b"\r\n", b"\n"))
         self.upload(cleanup, f"{root}/incoming/{identifier}.purge.sh")
+        retention = Path(".cache/deploy/prune-deployments.sh")
+        retention.write_bytes(Path(__file__).with_name("prune-deployments.sh").read_bytes().replace(b"\r\n", b"\n"))
+        self.upload(retention, f"{root}/incoming/{identifier}.prune.sh")
         # Files/state are fully uploaded before switching the public entry point.
         # All paths are validated above; only a generated symlink/state is replaced.
         commands = [
             f"mkdir {root}/releases/{identifier}",
             f"tar -xzf {root}/incoming/{identifier}.tar.gz -C {root}/releases/{identifier}",
             f"test -f {root}/releases/{identifier}/index.html",
+            f"if test -f {root}/state/archive.sqlite3; then "
+            f"cp {root}/state/archive.sqlite3 {root}/incoming/{identifier}.backup.sqlite3 && "
+            f"mv -Tf {root}/incoming/{identifier}.backup.sqlite3 {root}/state/archive.sqlite3.bak; fi",
             f"ln -s releases/{identifier} {root}/current-{identifier}",
             f"mv -Tf {root}/current-{identifier} {root}/current",
             f"mv {root}/incoming/{identifier}.sqlite3 {root}/state/archive.sqlite3",
             f"sh {root}/incoming/{identifier}.purge.sh {root} {root}/incoming/{identifier}.removed.txt",
+            f"sh {root}/incoming/{identifier}.prune.sh {root} {identifier}",
         ]
         self.execute(" && ".join(commands), check=True)
-        print("网站与采集进度已发布，命中黑名单或超过 30 天的文章页面已删除。")
+        print("网站与采集进度已发布，命中文章、旧版本和上传残留已按规则清理。")
 
 
 def main():
