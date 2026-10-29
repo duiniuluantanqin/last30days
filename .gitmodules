@@ -1,4 +1,0 @@
-[submodule "third_party/multilingual-sensitive-words"]
-	path = third_party/multilingual-sensitive-words
-	url = https://github.com/yxpil/multilingual-sensitive-words.git
-	branch = main
