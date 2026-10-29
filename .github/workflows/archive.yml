@@ -1,5 +1,8 @@
 name: Hourly archive
 on:
+  push:
+    branches:
+      - master
   schedule:
     - cron: '17 * * * *'
   workflow_dispatch:
@@ -17,7 +20,7 @@ jobs:
       DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
       DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
       DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
-      DEPLOY_ROOT: ${{ vars.DEPLOY_ROOT || '/srv/forum-archive' }}
+      DEPLOY_ROOT: ${{ vars.DEPLOY_ROOT || '/var/www/html/last30days' }}
       DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
       PYTHONUTF8: '1'
     steps:
@@ -30,7 +33,12 @@ jobs:
       - run: python -m pip install -e .
       - name: Restore authoritative state from ECS
         run: python scripts/remote.py restore
+      - name: Apply blacklist and 30-day retention and publish
+        run: |
+          python -m forum_archive build --path-file .cache/release.txt
+          python scripts/remote.py publish
       - name: Collect posts (partial failures are retried next time)
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         id: crawl
         shell: bash
         run: |
@@ -41,11 +49,13 @@ jobs:
           fi
           echo "result=$result" >> "$GITHUB_OUTPUT"
       - name: Generate release
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: python -m forum_archive build --path-file .cache/release.txt
       - name: Publish website and durable state
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: python scripts/remote.py publish
       - name: Report partial collection failures
-        if: steps.crawl.outputs.result == '2'
+        if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && steps.crawl.outputs.result == '2'
         run: |
           echo "::error::部分帖子采集失败；成功内容和重试状态已保存到 ECS，下一轮继续。"
           exit 1

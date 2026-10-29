@@ -84,6 +84,285 @@ class ArchiveTests(unittest.TestCase):
         self.assertTrue(self.settings.filters.blocks("广告 123"))
         self.assertFalse(self.settings.filters.blocks("普通技术讨论"))
 
+    def test_configured_number_v_marker_matches_titles_and_body_text_only(self):
+        filters = TitleFilter(blocked_patterns=Settings.load(ROOT / "config.toml").filters.blocked_patterns)
+        for marker in ("[24V]", "[1v]", "[123V]", "[ 24 V ]", "［２４Ｖ］", "[2\u200b4V]"):
+            with self.subTest(marker=marker):
+                self.assertTrue(filters.blocks("普通讨论" + marker))
+                self.assertTrue(filters.blocks("普通讨论", "<p>" + "正文" * 100 + marker + "</p>"))
+        self.assertTrue(filters.blocks("普通讨论", "<p>&#91;24<span>V</span>&#93;</p>"))
+        for title in ("24V 电源", "[V]", "[24]", "[V24]", "[24VA]", "(24V)"):
+            with self.subTest(title=title):
+                self.assertFalse(filters.blocks(title))
+        self.assertFalse(filters.blocks("普通讨论", '<p title="[24V]">正文</p><img src="https://cdn.example/[24V].jpg"><a href="https://example.com/[24V]">链接</a>'))
+
+    def test_number_v_marker_removes_existing_title_and_body_matches(self):
+        settings = replace(self.settings, filters=TitleFilter(blocked_patterns=Settings.load(ROOT / "config.toml").filters.blocked_patterns))
+        with Store(settings, NOW) as store:
+            for thread_id, title, body in (("101", "普通讨论[24V]", "<p>正文</p>"),
+                                          ("102", "普通讨论", "<p>" + "正文" * 100 + "[2<span>4V]</span></p>"),
+                                          ("103", "24V 电源", "<p>普通正文</p>")):
+                store.discover(Thread(thread_id, SOURCE, title, NOW.isoformat()), NOW)
+                store.save_post(thread_id, Post(title, NOW.isoformat(), body, "摘要", 0), NOW, False)
+        old = settings.output / "release-old/posts"
+        old.mkdir(parents=True)
+        for thread_id in ("101", "102", "103"):
+            (old / f"{thread_id}.html").write_text("旧文章", encoding="utf-8")
+        release = build(settings, now=NOW)
+        for thread_id in ("101", "102"):
+            self.assertFalse((release / f"posts/{thread_id}.html").exists())
+            self.assertFalse((old / f"{thread_id}.html").exists())
+        self.assertTrue((release / "posts/103.html").is_file())
+        self.assertTrue((old / "103.html").is_file())
+        data = json.loads((release / "assets/search-index.js").read_text(encoding="utf-8")
+                          .removeprefix("window.archiveSearchIndex = ").removesuffix(";\n"))
+        self.assertEqual([article["id"] for article in data["articles"]], ["103"])
+        with Store(settings, NOW) as store:
+            self.assertEqual(store.removed_ids(), {"101", "102"})
+
+    def test_image_count_filter_keeps_twenty_and_blocks_twenty_one_before_display_rules(self):
+        image = '<img src="https://cdn.example/original.jpg">'
+        for count in (0, 1, 20, 21, 30):
+            with self.subTest(count=count):
+                self.assertEqual(self.settings.filters.blocks("普通讨论", "<p>正文</p>" + image * count), count > 20)
+        for body in ("<p>防水图</p>" + image * 21, "<p>" + "文字" * 200 + "</p>" + image * 21):
+            self.assertTrue(self.settings.filters.blocks("普通讨论", body))
+        self.assertFalse(self.settings.filters.blocks("普通讨论", "<p>文字 img img</p>"))
+
+    def test_image_count_filter_applies_during_crawl_without_image_downloads(self):
+        image = '<img src="https://cdn.example/original.jpg">'
+        routes = {"/thread0806.php?page=1": listing([("101", "二十张图片", NOW, NOW), ("102", "二十一张图片", NOW, NOW)]),
+                  "/htm_data/2610/7/101.html": post(title="二十张图片", body="<p>正文</p>" + image * 20),
+                  "/htm_data/2610/7/102.html": post(title="二十一张图片", body="<p>正文</p>" + image * 21)}
+        stats, requests = self.run_crawl(routes)
+        self.assertEqual(stats["collected"], 1)
+        self.assertEqual(stats["blocked"], 1)
+        self.assertFalse(any("cdn.example" in url for url in requests))
+        with Store(self.settings, NOW) as store:
+            self.assertEqual([article["id"] for article in store.articles()], ["101"])
+            self.assertIn("102", store.removed_ids())
+        stats, requests = self.run_crawl(routes)
+        self.assertEqual(stats["collected"], 0)
+        self.assertFalse(any(".html" in url for url in requests))
+
+    def test_image_count_filter_removes_historical_posts_and_search_data(self):
+        image = '<img src="https://cdn.example/original.jpg">'
+        with Store(self.settings, NOW) as store:
+            for thread_id, count in (("101", 20), ("102", 21)):
+                store.discover(Thread(thread_id, SOURCE, "正常讨论", NOW.isoformat()), NOW)
+                # Simulate an older database with inaccurate image_count metadata.
+                store.save_post(thread_id, Post("正常讨论", NOW.isoformat(), "<p>防水图</p>" + image * count, "摘要", 0), NOW, False)
+        old = self.settings.output / "release-old/posts"
+        old.mkdir(parents=True)
+        (old / "102.html").write_text("旧文章", encoding="utf-8")
+        release = build(self.settings, now=NOW)
+        self.assertTrue((release / "posts/101.html").is_file())
+        self.assertFalse((release / "posts/102.html").exists())
+        self.assertFalse((old / "102.html").exists())
+        data = json.loads((release / "assets/search-index.js").read_text(encoding="utf-8")
+                          .removeprefix("window.archiveSearchIndex = ").removesuffix(";\n"))
+        self.assertEqual([article["id"] for article in data["articles"]], ["101"])
+        with Store(self.settings, NOW) as store:
+            self.assertIn("102", store.removed_ids())
+            row = store.db.execute("SELECT body_html FROM threads WHERE id='102'").fetchone()
+            self.assertEqual(row["body_html"].count("<img"), 21)
+
+    def new_ids(self, release):
+        page = BeautifulSoup((release / "index.html").read_text(encoding="utf-8"), "html.parser")
+        return {row.select_one("h2 a")["href"].split("/")[-1].removesuffix(".html")
+                for row in page.select(".article-row") if row.select_one(".new-badge")}
+
+    def test_new_badges_rotate_by_crawl_not_timestamp_or_build(self):
+        with Store(self.settings, NOW) as store:
+            store.discover(Thread("100", SOURCE, "已有文章", NOW.isoformat()), NOW)
+            store.save_post("100", Post("已有文章", NOW.isoformat(), "<p>原有正文</p>", "摘要", 0), NOW, False)
+        self.assertEqual(self.new_ids(build(self.settings, now=NOW)), set())
+        first_routes = {"/thread0806.php?page=1": listing([("101", "本次文章", NOW, NOW)]),
+                        "/htm_data/2610/7/101.html": post(title="本次文章")}
+        self.run_crawl(first_routes)
+        first = build(self.settings, now=NOW)
+        self.assertEqual(self.new_ids(first), {"101"})
+        self.assertEqual(self.new_ids(build(self.settings, now=NOW + timedelta(minutes=5))), {"101"})
+        for filename in ("archive/2026-10.html", "posts/101.html"):
+            page = BeautifulSoup((first / filename).read_text(encoding="utf-8"), "html.parser")
+            self.assertEqual(page.select_one(".new-badge").get_text(), "New")
+        self.assertNotIn("new-badge", (first / "posts/100.html").read_text(encoding="utf-8"))
+        index = (first / "assets/search-index.js").read_text(encoding="utf-8")
+        data = json.loads(index.removeprefix("window.archiveSearchIndex = ").removesuffix(";\n"))
+        self.assertEqual({row["id"] for row in data["articles"] if row["is_new"]}, {"101"})
+        second_routes = {"/thread0806.php?page=1": listing([("102", "下一批文章", NOW, NOW), ("101", "本次文章", NOW, NOW)]),
+                         "/htm_data/2610/7/102.html": post(title="下一批文章")}
+        self.run_crawl(second_routes)
+        second = build(self.settings, now=NOW)
+        self.assertEqual(self.new_ids(second), {"102"})
+        self.assertNotIn("new-badge", (second / "posts/101.html").read_text(encoding="utf-8"))
+        self.run_crawl(second_routes)
+        self.assertEqual(self.new_ids(build(self.settings, now=NOW)), set())
+
+    def test_partial_crawl_marks_only_collected_articles_as_new(self):
+        old = NOW - timedelta(days=40)
+        routes = {"/thread0806.php?page=1": listing([("101", "正常讨论", NOW, NOW), ("102", "失败文章", NOW, NOW),
+                                                     ("103", "色情文章", NOW, NOW), ("104", "过期文章", old, NOW)]),
+                  "/htm_data/2610/7/101.html": post(), "/htm_data/2610/7/102.html": 503}
+        stats, _ = self.run_crawl(routes)
+        self.assertEqual(stats["errors"], 1)
+        self.assertEqual(self.new_ids(build(self.settings, now=NOW)), {"101"})
+        routes["/htm_data/2610/7/102.html"] = post(title="重试成功")
+        self.run_crawl(routes)
+        self.assertEqual(self.new_ids(build(self.settings, now=NOW)), {"102"})
+
+    def test_fatal_listing_failure_keeps_last_completed_new_batch(self):
+        self.run_crawl({"/thread0806.php?page=1": listing([("101", "正常讨论", NOW, NOW)]),
+                        "/htm_data/2610/7/101.html": post()})
+        with self.assertRaises(ParseError):
+            self.run_crawl({"/thread0806.php?page=1": "<html>Access denied</html>"})
+        self.assertEqual(self.new_ids(build(self.settings, now=NOW)), {"101"})
+
+    def test_body_rules_match_full_text_without_html_attributes(self):
+        rules = self.settings.filters
+        for body in ("<p>普通文字</p>" * 100 + "<p>色情</p>",
+                     "<p>色<span>情</span></p>", "<p>&#x8272;&#x60c5;</p>",
+                     "<p>ＡＶ\u200b 女优</p>", "<p>广告 123</p>"):
+            with self.subTest(body=body):
+                self.assertTrue(rules.blocks("正常讨论", body))
+        self.assertFalse(rules.blocks("正常讨论", '<p>普通正文</p><img src="https://cdn.example/色情.jpg" alt="色情">'
+                                      '<a href="https://example.com/色情">普通链接</a>'))
+        self.assertFalse(rules.blocks("色", "<p>情</p>"))
+
+    def test_body_match_stays_blocked_between_runs(self):
+        routes = {"/thread0806.php?page=1": listing([("101", "正常讨论", NOW, NOW)]),
+                  "/htm_data/2610/7/101.html": post(body="<p>普通文字</p>" * 100 + "<p>色情</p>")}
+        first, _ = self.run_crawl(routes)
+        self.assertEqual(first["blocked"], 1)
+        self.assertEqual(first["collected"], 0)
+        second, requested = self.run_crawl(routes)
+        self.assertEqual(second["totals"], {"blocked": 1})
+        self.assertFalse(any(".html" in url for url in requested))
+        release = build(self.settings, now=NOW)
+        self.assertFalse((release / "posts/101.html").exists())
+        self.settings.filters = TitleFilter([])
+        restored = build(self.settings, now=NOW)
+        self.assertTrue((restored / "posts/101.html").is_file())
+
+    def test_new_body_rule_removes_historical_pages(self):
+        with Store(self.settings, NOW) as store:
+            for thread_id, body in (("101", "<p>普通文字</p>" * 100 + "<p>新增<span>词</span></p>"),
+                                    ("102", "<p>保留正文</p>")):
+                store.discover(Thread(thread_id, SOURCE, "正常讨论", NOW.isoformat()), NOW)
+                store.save_post(thread_id, Post("正常讨论", NOW.isoformat(), body, "普通摘要", 0), NOW, False)
+        previous = build(self.settings, now=NOW)
+        self.settings.filters = TitleFilter(["新增词"])
+        latest = build(self.settings, now=NOW)
+        build(self.settings, now=NOW)
+        for release in (previous, latest):
+            self.assertFalse((release / "posts/101.html").exists())
+            self.assertTrue((release / "posts/102.html").is_file())
+        with Store(self.settings, NOW) as store:
+            self.assertEqual(store.removed_ids(), {"101"})
+            self.assertEqual(store.counts(), {"blocked": 1, "collected": 1})
+
+    def test_extra_keyword_files_extend_config_blacklist(self):
+        config = self.settings.root / "config.toml"
+        config.write_text('[source]\nlist_url = "' + SOURCE + '"\n[filter]\nblocked_keywords = ["原有词"]\n', encoding="utf-8")
+        directory = self.settings.root / "blacklist"
+        directory.mkdir()
+        (directory / "keywords.txt").write_text("新增词\n另一个集中词\n", encoding="utf-8")
+        (directory / "two.txt").write_text("\n  另一个词  \n", encoding="utf-8")
+        (directory / "README.md").write_text("不是黑名单词", encoding="utf-8")
+        settings = Settings.load(config)
+        self.assertTrue(settings.filters.blocks("包含原有词的标题"))
+        self.assertTrue(settings.filters.blocks("包含新增词的标题"))
+        self.assertTrue(settings.filters.blocks("包含另一个集中词的标题"))
+        self.assertTrue(settings.filters.blocks("包含另一个词的标题"))
+        self.assertFalse(settings.filters.blocks("不是黑名单词"))
+
+    def test_selected_external_word_lists_merge_with_local_keywords(self):
+        root = self.settings.root
+        upstream = root / "wordlists"
+        upstream.mkdir(parents=True)
+        (upstream / "sw_色情类.txt").write_text("\ufeff色情测试\nDUPLICATE\n\n", encoding="utf-8")
+        (upstream / "sw_广告.txt").write_text("  广告测试  \n", encoding="utf-8")
+        (upstream / "sw_政治类.txt").write_text("其他分类测试\n", encoding="utf-8")
+        local = root / "blacklist"
+        local.mkdir()
+        (local / "custom.txt").write_text("自定义词\nduplicate\n", encoding="utf-8")
+        config = root / "config.toml"
+        config.write_text('[source]\nlist_url = "' + SOURCE + '"\n[filter]\n'
+                          'blocked_keywords = ["本地词", "ＤＵＰＬＩＣＡＴＥ"]\n'
+                          'keyword_files = ["wordlists/sw_色情类.txt", '
+                          '"wordlists/sw_广告.txt"]\n', encoding="utf-8")
+        settings = Settings.load(config)
+        for title in ("本地词", "色情测试", "广告测试", "自定义词", "duplicate"):
+            self.assertTrue(settings.filters.blocks("包含" + title + "的标题"))
+        self.assertFalse(settings.filters.blocks("其他分类测试"))
+        self.assertEqual(settings.filters.keywords.count("duplicate"), 1)
+        self.assertNotIn("", settings.filters.keywords)
+
+    def test_missing_keyword_file_reports_its_path(self):
+        config = self.settings.root / "config.toml"
+        config.write_text('[source]\nlist_url = "' + SOURCE + '"\n[filter]\n'
+                          'keyword_files = ["wordlists/missing.txt"]\n', encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "词库文件不存在：wordlists/missing.txt"):
+            Settings.load(config)
+
+    def test_updated_external_keywords_remove_previously_collected_article(self):
+        root = self.settings.root
+        config = root / "config.toml"
+        config.write_text('[source]\nlist_url = "' + SOURCE + '"\n[filter]\n'
+                          'keyword_files = ["upstream.txt"]\n', encoding="utf-8")
+        word_file = root / "upstream.txt"
+        word_file.write_text("其他词\n", encoding="utf-8")
+        before = Settings.load(config)
+        with Store(before, NOW) as store:
+            store.discover(Thread("101", SOURCE, "新增广告词讨论", NOW.isoformat()), NOW)
+            store.save_post("101", Post("新增广告词讨论", NOW.isoformat(), "<p>正文</p>", "正文", 0), NOW, False)
+        first = build(before, now=NOW)
+        self.assertTrue((first / "posts/101.html").is_file())
+        word_file.write_text("其他词\n新增广告词\n", encoding="utf-8")
+        second = build(Settings.load(config), now=NOW)
+        self.assertFalse((first / "posts/101.html").exists())
+        self.assertFalse((second / "posts/101.html").exists())
+        self.assertNotIn("新增广告词讨论", (second / "index.html").read_text(encoding="utf-8"))
+
+    def test_keyword_menu_has_safe_repository_configuration(self):
+        self.settings.site = replace(self.settings.site, github_repository="example/archive", github_branch="feature/rules")
+        self.settings.filters = TitleFilter(["原有词", "</div><script>bad()</script>"])
+        release = build(self.settings, now=NOW)
+        page = BeautifulSoup((release / "index.html").read_text(encoding="utf-8"), "html.parser")
+        menu = page.select_one("#keyword-menu")
+        self.assertIsNotNone(menu)
+        self.assertEqual(menu["data-repository"], "example/archive")
+        self.assertEqual(menu["data-branch"], "feature/rules")
+        self.assertEqual(json.loads(menu["data-keywords"]), self.settings.filters.keywords)
+        scripts = page.select("script")
+        self.assertEqual([script["src"] for script in scripts], ["/assets/browse.js", "/assets/keyword-menu.js"])
+        self.assertTrue((release / "assets/keyword-menu.js").is_file())
+        self.assertTrue(all(not script.get_text(strip=True) for script in scripts))
+
+    def test_merged_keyword_file_hides_previously_collected_article(self):
+        with Store(self.settings, NOW) as store:
+            store.discover(Thread("101", SOURCE, "新增关键词讨论", NOW.isoformat()), NOW)
+            store.save_post("101", Post("新增关键词讨论", NOW.isoformat(), "<p>正文</p>", "正文", 0), NOW, False)
+        first = build(self.settings, now=NOW)
+        self.assertTrue((first / "posts/101.html").is_file())
+        config = self.settings.root / "config.toml"
+        config.write_text('[source]\nlist_url = "' + SOURCE + '"\n', encoding="utf-8")
+        directory = self.settings.root / "blacklist"
+        directory.mkdir()
+        (directory / "new.txt").write_text("新增关键词\n", encoding="utf-8")
+        updated = Settings.load(config)
+        second = build(updated, now=NOW)
+        self.assertFalse((second / "posts/101.html").exists())
+        self.assertNotIn("新增关键词讨论", (second / "index.html").read_text(encoding="utf-8"))
+        self.assertFalse((first / "posts/101.html").exists())
+
+    def test_keyword_menu_is_absent_without_repository(self):
+        self.settings.site = replace(self.settings.site, github_repository="")
+        release = build(self.settings, now=NOW)
+        page = BeautifulSoup((release / "index.html").read_text(encoding="utf-8"), "html.parser")
+        self.assertIsNone(page.select_one("#keyword-menu"))
+        self.assertEqual([script["src"] for script in page.select("script")], ["/assets/browse.js"])
+
     def test_real_layout_timestamp_and_forum_scope(self):
         html = listing([("123", "正常讨论", NOW, NOW)], 5)
         html += '<h3><a href="/htm_data/2610/9/999.html">其他版块</a></h3>'
@@ -112,26 +391,30 @@ class ArchiveTests(unittest.TestCase):
         self.assertEqual(result.published_at, NOW.isoformat())
 
     def test_build_hides_all_images_in_existing_posts_with_marker(self):
-        markers = ["防水图", "防水<span>图</span>", "&#x9632;&#x6c34;&#x56fe;"]
+        markers = ["防水图", "防水<span>图</span>", "&#x9632;&#x6c34;&#x56fe;",
+                   "防<strong>水</strong>图", "防水<span>图以及防</span>水图"]
         with Store(self.settings, NOW) as store:
             for index, marker in enumerate(markers, 201):
                 thread_id = str(index)
                 body = (f'<p>保留正文：{marker}</p><img src="https://cdn.example/first.jpg">'
                         '<p>后续文字也保留</p><img src="https://cdn.example/second.jpg">')
                 store.discover(Thread(thread_id, SOURCE, "正常讨论", NOW.isoformat()), NOW)
-                store.save_post(thread_id, Post("正常讨论", NOW.isoformat(), body, "正文摘要", 2), NOW, False)
+                store.save_post(thread_id, Post("正常讨论", NOW.isoformat(), body, "正文摘要防水图", 2), NOW, False)
         release = build(self.settings, now=NOW)
-        for index in range(201, 204):
+        for index in range(201, 201 + len(markers)):
             with self.subTest(thread_id=index):
                 page = BeautifulSoup((release / f"posts/{index}.html").read_text(encoding="utf-8"), "html.parser")
                 self.assertEqual(page.select(".prose img"), [])
-                self.assertIn("防水图", page.select_one(".prose").get_text())
+                self.assertNotIn("防水图", page.select_one(".prose").get_text())
+                self.assertIn("保留正文：", page.select_one(".prose").get_text())
                 self.assertIn("后续文字也保留", page.select_one(".prose").get_text())
                 self.assertEqual(page.select(".image-note"), [])
         index_html = (release / "index.html").read_text(encoding="utf-8")
         self.assertNotIn("张外链图片", index_html)
+        self.assertNotIn("防水图", index_html)
         with Store(self.settings, NOW) as store:
             self.assertTrue(all(article["image_count"] == 2 for article in store.articles()))
+            self.assertTrue(all("防水图" in article["summary"] for article in store.articles()))
 
     def test_build_keeps_images_for_posts_without_marker(self):
         with Store(self.settings, NOW) as store:
@@ -141,8 +424,76 @@ class ArchiveTests(unittest.TestCase):
         release = build(self.settings, now=NOW)
         page = BeautifulSoup((release / "posts/201.html").read_text(encoding="utf-8"), "html.parser")
         self.assertEqual(page.select_one(".prose img")["src"], "https://cdn.example/original.jpg")
-        self.assertIsNotNone(page.select_one(".image-note"))
+        self.assertIsNone(page.select_one(".image-note"))
+        self.assertNotIn("图片直接从原地址加载，可能因原站限制或链接失效而无法显示。", page.get_text())
         self.assertIn("1 张外链图片", (release / "index.html").read_text(encoding="utf-8"))
+
+    def test_build_removes_trailing_like_counts_from_existing_posts(self):
+        image = '<img src="https://cdn.example/original.jpg">'
+        cases = [
+            ("<p>保留正文</p><div>赞(88)</div>", "保留正文", 0),
+            ("<p>保留正文</p><div>赞<span>(</span><b>123</b>)</div><br> \n", "保留正文", 0),
+            ("<p>保留正文</p><div>赞（ 0 ）</div>", "保留正文", 0),
+            ("<p>正文提到赞(88)，仍需保留。</p>", "正文提到赞(88)，仍需保留。", 0),
+            ("<p>" + "文" * 200 + "</p>" + image + "<div>赞(88)</div>", "文" * 200, 0),
+            ("<p>保留正文</p>" + image + "<div>赞(88)</div>", "保留正文", 1),
+        ]
+        with Store(self.settings, NOW) as store:
+            for index, (body, _, _) in enumerate(cases, 401):
+                thread_id = str(index)
+                store.discover(Thread(thread_id, SOURCE, "正常讨论", NOW.isoformat()), NOW)
+                summary = BeautifulSoup(body, "html.parser").get_text(" ", strip=True)[:180]
+                store.save_post(thread_id, Post("正常讨论", NOW.isoformat(), body, summary, body.count("<img")), NOW, False)
+        release = build(self.settings, now=NOW)
+        data = json.loads((release / "assets/search-index.js").read_text(encoding="utf-8")
+                          .removeprefix("window.archiveSearchIndex = ").removesuffix(";\n"))
+        for index, (body, expected, remaining) in enumerate(cases, 401):
+            with self.subTest(thread_id=index):
+                page = BeautifulSoup((release / f"posts/{index}.html").read_text(encoding="utf-8"), "html.parser")
+                self.assertEqual(page.select_one(".prose").get_text(strip=True), expected)
+                self.assertEqual(len(page.select(".prose img")), remaining)
+                entry = next(article for article in data["articles"] if article["id"] == str(index))
+                self.assertEqual(entry["text"], expected)
+                self.assertEqual(entry["summary"], expected[:180])
+        with Store(self.settings, NOW) as store:
+            for article in store.articles():
+                self.assertEqual(article["body_html"], cases[int(article["id"]) - 401][0])
+
+    def test_long_articles_hide_images_only_when_all_images_are_at_the_end(self):
+        image = '<a href="https://cdn.example/original.jpg"><img src="https://cdn.example/original.jpg"></a>'
+        cases = [
+            ("<p>" + "文" * 200 + "</p>" + image, 0),
+            ("<p>" + "文" * 200 + "</p><div>" + (image + "<br> \n") * 5 + "</div>", 0),
+            ("<p>" + "文" * 199 + "</p>" + image, 1),
+            ("<p>" + "文 " * 199 + "</p>" + image, 1),
+            ("<p>" + "文" * 200 + "</p>" + image * 6, 0),
+            ("<p>" + "文" * 200 + "</p>" + image * 2 + "<p>图片说明</p>", 2),
+            (image + "<p>" + "文" * 200 + "</p>" + image * 2, 3),
+            ("<p>" + "文" * 200 + "</p>", 0),
+            ("<p>" + "文" * 100 + "</p>" + image + "<p>" + "文" * 100 + "</p>" + image, 2),
+        ]
+        with Store(self.settings, NOW) as store:
+            for index, (body, _) in enumerate(cases, 301):
+                thread_id = str(index)
+                store.discover(Thread(thread_id, SOURCE, "正常讨论", NOW.isoformat()), NOW)
+                store.save_post(thread_id, Post("正常讨论", NOW.isoformat(), body, "正文摘要", body.count("<img")), NOW, False)
+        release = build(self.settings, now=NOW)
+        listing = BeautifulSoup((release / "index.html").read_text(encoding="utf-8"), "html.parser")
+        for index, (body, remaining) in enumerate(cases, 301):
+            with self.subTest(thread_id=index):
+                page = BeautifulSoup((release / f"posts/{index}.html").read_text(encoding="utf-8"), "html.parser")
+                self.assertEqual(len(page.select(".prose img")), remaining)
+                self.assertEqual(page.select_one(".prose").get_text(), BeautifulSoup(body, "html.parser").get_text())
+                self.assertIsNone(page.select_one(".image-note"))
+                row = listing.select_one(f'.article-info a[href="/posts/{index}.html"]').find_parent("article")
+                self.assertEqual("张外链图片" in row.get_text(), bool(remaining))
+                if remaining:
+                    self.assertIn(f"{remaining} 张外链图片", row.get_text())
+        with Store(self.settings, NOW) as store:
+            for article in store.articles():
+                body, _ = cases[int(article["id"]) - 301]
+                self.assertEqual(article["body_html"], body)
+                self.assertEqual(article["image_count"], body.count("<img"))
 
     def test_end_to_end_no_image_requests_and_idempotent_replay(self):
         html = listing([("101", "正常讨论", NOW, NOW), ("102", "色情帖子", NOW, NOW), ("103", "旧帖", NOW - timedelta(days=40), NOW)])
@@ -199,7 +550,75 @@ class ArchiveTests(unittest.TestCase):
         self.assertNotEqual(first, second)
         self.assertFalse((second / "posts/101.html").exists())
         self.assertEqual(current_release(self.settings.output), second.resolve())
-        self.assertTrue((first / "posts/101.html").exists())  # No destructive cleanup.
+        self.assertFalse((first / "posts/101.html").exists())
+
+    def test_blocked_page_cleanup_keeps_other_articles_and_state(self):
+        with Store(self.settings, NOW) as store:
+            for thread_id, title in (("101", "需要屏蔽的讨论"), ("102", "保留的讨论")):
+                store.discover(Thread(thread_id, SOURCE, title, NOW.isoformat()), NOW)
+                store.save_post(thread_id, Post(title, NOW.isoformat(), "<p>正文</p>", "正文", 0), NOW, False)
+        first = build(self.settings, now=NOW)
+        second = build(self.settings, now=NOW)
+        unrelated = self.settings.output / "unrelated/posts/101.html"
+        unrelated.parent.mkdir(parents=True)
+        unrelated.write_text("不是生成的文章页", encoding="utf-8")
+        self.settings.filters = TitleFilter(["需要屏蔽"])
+        latest = build(self.settings, now=NOW)
+        for release in (first, second, latest):
+            self.assertFalse((release / "posts/101.html").exists())
+            self.assertTrue((release / "posts/102.html").exists())
+        self.assertTrue(unrelated.exists())
+        self.assertEqual(current_release(self.settings.output), latest.resolve())
+        with Store(self.settings, NOW) as store:
+            self.assertEqual(store.counts(), {"blocked": 1, "collected": 1})
+        # Repeated cleanup and later discovery must not restore the blocked post.
+        with Store(self.settings, NOW) as store:
+            store.discover(Thread("101", SOURCE, "需要屏蔽的讨论", NOW.isoformat()), NOW)
+            self.assertEqual(store.pending(10, 3), [])
+        build(self.settings, now=NOW)
+        self.assertFalse((latest / "posts/101.html").exists())
+
+    def test_rolling_retention_deletes_old_body_and_generated_pages(self):
+        earlier = NOW - timedelta(days=10)
+        dates = {"101": NOW - timedelta(days=30, seconds=1),
+                 "102": NOW - timedelta(days=30),
+                 "103": NOW - timedelta(days=29)}
+        with Store(self.settings, earlier) as store:
+            for thread_id, date in dates.items():
+                title = "文章" + thread_id
+                store.discover(Thread(thread_id, SOURCE, title, date.isoformat()), earlier)
+                store.save_post(thread_id, Post(title, date.isoformat(), "<p>保留正文</p>", "摘要", 2), earlier, False)
+        old_release = build(self.settings, now=earlier)
+        self.assertTrue((old_release / "posts/101.html").is_file())
+        latest = build(self.settings, now=NOW)
+        for release in (old_release, latest):
+            self.assertFalse((release / "posts/101.html").exists())
+            self.assertTrue((release / "posts/102.html").is_file())
+            self.assertTrue((release / "posts/103.html").is_file())
+        self.assertNotIn("文章101", (latest / "index.html").read_text(encoding="utf-8"))
+        with Store(self.settings, NOW) as store:
+            row = store.db.execute("SELECT * FROM threads WHERE id='101'").fetchone()
+            self.assertEqual(row["status"], "expired")
+            self.assertIsNone(row["body_html"])
+            self.assertIsNone(row["summary"])
+            self.assertEqual(row["image_count"], 0)
+            self.assertIn("101", store.removed_ids())
+            self.assertEqual(store.cutoff, NOW - timedelta(days=30))
+
+    def test_expired_posts_cannot_be_restored_by_removing_blacklist(self):
+        earlier = NOW - timedelta(days=10)
+        date = NOW - timedelta(days=31)
+        with Store(self.settings, earlier) as store:
+            store.discover(Thread("101", SOURCE, "测试文章", date.isoformat()), earlier)
+            store.save_post("101", Post("测试文章", date.isoformat(), "<p>旧正文</p>", "摘要", 0), earlier, False)
+        self.settings.filters = TitleFilter(["测试"])
+        build(self.settings, now=NOW)
+        self.settings.filters = TitleFilter([])
+        build(self.settings, now=NOW)
+        with Store(self.settings, NOW) as store:
+            self.assertEqual(store.articles(), [])
+            self.assertEqual(store.pending(10, 3), [])
+            self.assertIn("101", store.removed_ids())
 
     def test_last_reply_not_creation_date_controls_backfill_boundary(self):
         self.settings.crawl.backfill_pages_per_run = 2

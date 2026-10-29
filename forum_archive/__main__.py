@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
-from .config import Settings, Site, Source
+from .config import Settings, Source
 from .crawler import crawl
 from .site import build, serve
 from .source import Post, Thread
@@ -18,7 +18,7 @@ from .store import Store
 
 def demo_settings(settings: Settings) -> Settings:
     return replace(settings, source=Source("https://example.com/thread0806.php?fid=7"),
-                   site=Site(settings.site.title, "本地演示 · 非真实采集", "用于检查排版的本地示例内容。", 5),
+                   site=replace(settings.site, subtitle="本地演示 · 非真实采集", description="用于检查排版的本地示例内容。", page_size=5),
                    database=settings.root / "data/demo/archive.sqlite3", output=settings.root / "site/demo")
 
 
@@ -45,7 +45,7 @@ def create_demo(settings: Settings):
 
 
 def parser():
-    result = argparse.ArgumentParser(description="标题黑名单采集、静态网站生成与本地预览（不下载图片）")
+    result = argparse.ArgumentParser(description="标题和正文黑名单采集、静态网站生成与本地预览（不下载图片）")
     result.add_argument("--config", default="config.toml", help="配置文件路径")
     commands = result.add_subparsers(dest="command", required=True)
     collect = commands.add_parser("crawl", help="采集并生成网站")

@@ -1,0 +1,37 @@
+# 项目维护说明
+
+本项目是 Python 论坛主帖采集器和 Jinja 静态阅读站，使用 SQLite 保存权威状态，通过 GitHub Actions 发布到 Ubuntu ECS，复用 Caddy。README 仅保留简介与构建；详细规则和部署步骤见仓库技能的 [内容规则](.agents/skills/forum-archive-maintainer/references/rules.md) 与 [运维说明](.agents/skills/forum-archive-maintainer/references/operations.md)。
+
+## 工作方式
+
+- 修改前说明影响正确性的假设；不明确的规则先确认，小歧义采用最小可逆方案。
+- 只修改本次任务需要的代码，保留用户已有修改，不顺手重构、升级依赖或格式化整个仓库。
+- 对行为变化优先增加可复现的回归测试，再实施最小修复；验证后报告结果及尚未验证的范围。
+- 本地测试不等于线上发布。提交、推送、操作服务器及生产 Caddy 配置须在用户授权范围内进行；不暴露部署凭据。
+
+## 关键约束
+
+- 只采集楼主主帖；不收集回复、视频、附件，不下载图片，只保存原图 URL。
+- 黑名单匹配标题与完整正文文字，任一命中屏蔽整篇；不匹配 HTML 属性、图片 URL 或链接目标。
+- 清理后的原始正文超过 20 个 `img` 标签时过滤整篇，20 张保留；采集与已有归档重筛使用同一规则，先于展示层隐藏图片，不下载图片判断数量。
+- 全文搜索数据只能包含通过过滤和保留规则的公开正文纯文本，在展示规则应用后生成；下架时同步使历史版本的全文搜索数据失效，保留当前索引。页码跳转须保留月份路径或搜索关键词。
+- `New` 仅标记最近一次完成爬取中成功新增的文章，批次 ID 清单保存在 SQLite meta；零新增清空、部分失败保留本批成功项、致命列表错误不切换，单独构建或清理发布不改变批次。列表、文章页及搜索结果须一致。
+- `Block` 保持单按钮、纯静态：复制划词并打开 GitHub 的 `blacklist/keywords.txt` 编辑页，由用户在末尾粘贴保存；不创建 Issue 或 PR，不引入 OAuth 服务或浏览器令牌。服务器 Caddy 配置由用户自行维护。
+- 图片展示规则在构建时处理，适用于已有归档；不覆写 SQLite 中的原始正文。修改规则时同步处理图片计数、提示和摘要。
+- 通过图片数量过滤后，“防水图”命中时隐藏全部图片，并移除正文及摘要中的这三个字；正文至少 200 个非空白字符且所有图片只出现在文末时，也隐藏全部图片。正文中间配图或图片后有文字时不应用后一规则。
+- 按原帖发布时间滚动保留 30 天。帖子 ID 和状态用于去重；不要用文件修改时间、抓取时间或最后回复时间代替发布时间。
+- 发布链路先恢复 ECS 状态、应用黑名单和保留规则并发布；定时和手动事件继续采集，push 事件只清理发布。命中或过期 ID 经私有清单删除历史版本的对应文章 HTML；清理范围不能扩大到其他网站或任意路径。
+- 替换服务器状态前滚动备份到 `state/archive.sqlite3.bak`。发布成功后保留最新 3 个版本并额外保护 `current`，删除本次上传文件和超过 24 小时的已知上传残留；不能清理 `state` 或跟随软链接删除外部内容。
+- 关键词统一维护在 `blacklist/keywords.txt`，已迁入原上游色情和广告分类的规则；无 Git 子模块或自动上游更新依赖。迁入词库的来源和许可证见 `blacklist/SOURCES.md`。
+
+## 代码入口与验证
+
+- `forum_archive/source.py`：页面解析、主帖提取、HTML 清理。
+- `forum_archive/config.py`、`store.py`、`crawler.py`：规则加载、历史重筛、去重和采集。
+- `forum_archive/site.py`、`templates/`、`static/`：构建、图片展示、本地预览及 Block 菜单。
+- `scripts/remote.py`、`scripts/purge-blocked.sh`、`scripts/prune-deployments.sh`、`.github/workflows/`：发布、旧页面删除、版本和上传保留策略。
+- 维护这些功能时参考项目技能：[forum-archive-maintainer](.agents/skills/forum-archive-maintainer/SKILL.md)。
+
+Windows 离线测试：`.venv/Scripts/python.exe -X utf8 -m unittest discover -s tests -v`。
+演示构建：`.venv/Scripts/python.exe -m forum_archive demo`，使用独立的演示数据库，不访问源站。
+前端行为变更时按 skill 运维说明的可选浏览器检查验证，包括普通公网 HTTP 来源；不在测试中提交 GitHub PR。

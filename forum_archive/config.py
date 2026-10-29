@@ -6,6 +6,8 @@ import unicodedata
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
+from bs4 import BeautifulSoup
+
 
 @dataclass
 class Source:
@@ -40,14 +42,24 @@ class TitleFilter:
     blocked_patterns: list[str] = field(default_factory=list)
 
     def __post_init__(self):
-        self.keywords = [normalize_title(word) for word in self.blocked_keywords if word.strip()]
+        self.keywords = list(dict.fromkeys(normalized for word in self.blocked_keywords
+                                          if (normalized := normalize_title(word))))
         self.patterns = [re.compile(pattern, re.IGNORECASE) for pattern in self.blocked_patterns]
 
-    def blocks(self, title: str) -> bool:
-        normalized = normalize_title(title)
-        return any(word in normalized for word in self.keywords) or any(
-            pattern.search(normalized) for pattern in self.patterns
-        )
+    def blocks(self, title: str, body_html: str = "") -> bool:
+        texts = [title]
+        if body_html:
+            body = BeautifulSoup(body_html, "html.parser")
+            if len(body.select("img")) > 20:
+                return True
+            texts.append(body.get_text(" ", strip=True))
+        for text in texts:
+            normalized = normalize_title(text)
+            if any(word in normalized for word in self.keywords) or any(
+                pattern.search(normalized) for pattern in self.patterns
+            ):
+                return True
+        return False
 
 
 @dataclass
@@ -56,6 +68,8 @@ class Site:
     subtitle: str = "技术讨论 · 每小时更新"
     description: str = "把值得阅读的讨论，留在这里。"
     page_size: int = 20
+    github_repository: str = ""
+    github_branch: str = "main"
 
 
 @dataclass
@@ -77,6 +91,13 @@ class Settings:
         source = Source(**raw["source"])
         crawl = Crawl(**raw.get("crawl", {}))
         site = Site(**raw.get("site", {}))
+        if site.github_repository and (
+            not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?/[A-Za-z0-9_.-]+", site.github_repository)
+            or site.github_repository.split("/")[-1] in {".", ".."}
+        ):
+            raise ValueError("site.github_repository 必须为 GitHub 的 owner/repo")
+        if not site.github_branch.strip():
+            raise ValueError("site.github_branch 不能为空")
         parts = urlsplit(source.list_url)
         if parts.scheme not in {"http", "https"} or not parts.hostname or parts.username or parts.password:
             raise ValueError("source.list_url 必须是没有账号密码的 HTTP(S) 网址")
@@ -88,6 +109,16 @@ class Settings:
         if any(value <= 0 for value in vars(crawl).values()) or site.page_size <= 0:
             raise ValueError("采集限制与分页数量必须为正数")
         storage = raw.get("storage", {})
-        return cls(root, source, crawl, TitleFilter(**raw.get("filter", {})), site,
+        filters = dict(raw.get("filter", {}))
+        keywords = list(filters.get("blocked_keywords", []))
+        for keyword_file in sorted((root / "blacklist").glob("*.txt")):
+            keywords.extend(keyword_file.read_text(encoding="utf-8-sig").splitlines())
+        for filename in filters.pop("keyword_files", []):
+            keyword_file = root / filename
+            if not keyword_file.is_file():
+                raise ValueError(f"词库文件不存在：{filename}；请检查 filter.keyword_files 配置")
+            keywords.extend(keyword_file.read_text(encoding="utf-8-sig").splitlines())
+        filters["blocked_keywords"] = keywords
+        return cls(root, source, crawl, TitleFilter(**filters), site,
                    root / storage.get("database", "data/archive.sqlite3"),
                    root / storage.get("output", "site"))

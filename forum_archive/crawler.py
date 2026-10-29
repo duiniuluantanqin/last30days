@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import json
 import logging
 import time
 from urllib.parse import urljoin
@@ -147,21 +148,23 @@ def crawl(settings: Settings, *, retry_failed: bool = False, fetcher=None, now: 
                         break
 
             stats["blocked"] += store.apply_filter(settings.filters)
-            # Exact listing timestamps let us reject old posts without fetching them.
-            with store.db:
-                expired = store.db.execute("UPDATE threads SET status='expired' WHERE status='pending' AND listed_at IS NOT NULL AND listed_at < ?", (store.cutoff.isoformat(),))
-                stats["expired"] += expired.rowcount
+            # Expire saved bodies as well as old discovered links before fetching.
+            stats["expired"] += store.expire_old()
+            new_article_ids = []
             for thread in store.pending(settings.crawl.max_posts_per_run, settings.crawl.max_attempts):
                 try:
                     if not source.same_origin(thread["url"]):
                         raise ValueError("状态中的帖子 URL 与来源不一致")
                     post = source.parse_post(client.get(thread["url"]), thread["url"], thread["listed_at"])
-                    status = store.save_post(thread["id"], post, now, settings.filters.blocks(post.title))
+                    status = store.save_post(thread["id"], post, now, settings.filters.blocks(post.title, post.body_html))
                     stats[status] += 1
+                    if status == "collected":
+                        new_article_ids.append(thread["id"])
                 except (httpx.HTTPError, ParseError, RuntimeError, ValueError) as error:
                     store.fail(thread["id"], str(error))
                     stats["errors"] += 1
                     log.warning("帖子 %s 获取失败：%s", thread["id"], type(error).__name__)
+            store.set("new_article_ids", json.dumps(new_article_ids))
             store.set("last_scan_at", now.isoformat())
             if not stats["errors"]:
                 store.set("last_success_at", now.isoformat())
