@@ -1,8 +1,15 @@
+from datetime import datetime
 from pathlib import Path
 import shutil
 import subprocess
 import tempfile
 import unittest
+from zoneinfo import ZoneInfo
+
+from forum_archive.config import Settings
+from forum_archive.site import build
+from forum_archive.source import Post, Thread
+from forum_archive.store import Store
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts/purge-blocked.sh"
@@ -60,6 +67,42 @@ class RemoteCleanupTests(unittest.TestCase):
         result = self.run_cleanup("")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(sorted(self.root.rglob("*.html")), before)
+
+    def test_keyword_file_update_deletes_existing_title_and_body_matches(self):
+        config = self.root / "config.toml"
+        config.write_text('[source]\nlist_url = "https://forum.example/thread0806.php?fid=7"\n', encoding="utf-8")
+        keywords = self.root / "blacklist/keywords.txt"
+        keywords.parent.mkdir()
+        keywords.write_text("", encoding="utf-8")
+        settings = Settings.load(config)
+        now = datetime.now(ZoneInfo(settings.source.timezone))
+        with Store(settings, now) as store:
+            for thread_id, title, body in (("101", "标题新增词讨论", "普通正文"),
+                                          ("102", "保留讨论", "普通正文"),
+                                          ("103", "正常标题", "普通文字" * 100 + "正文新增词")):
+                store.discover(Thread(thread_id, settings.source.list_url, title, now.isoformat()), now)
+                store.save_post(thread_id, Post(title, now.isoformat(), f"<p>{body}</p>", body[:180], 0), now, False)
+        previous = build(settings, now=now)
+        old_remote = self.root / "deployment/releases/release-existing"
+        shutil.copytree(previous, old_remote)
+
+        keywords.write_text("标题新增词\n正文新增词\n", encoding="utf-8")
+        settings = Settings.load(config)
+        latest = build(settings, now=now)
+        with Store(settings, now) as store:
+            removed = store.removed_ids()
+        self.assertEqual(removed, {"101", "103"})
+        # Publish uses these same database IDs as its remote removal manifest.
+        result = self.run_cleanup("".join(f"{thread_id}\n" for thread_id in sorted(removed)))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for release in (old_remote, latest):
+            self.assertFalse((release / "posts/101.html").exists())
+            self.assertFalse((release / "posts/103.html").exists())
+            self.assertTrue((release / "posts/102.html").is_file())
+        index = (latest / "index.html").read_text(encoding="utf-8")
+        self.assertNotIn("标题新增词讨论", index)
+        self.assertNotIn("正常标题", index)
+        self.assertIn("保留讨论", index)
 
 
 if __name__ == "__main__":
