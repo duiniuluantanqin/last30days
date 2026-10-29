@@ -45,7 +45,7 @@ def create_demo(settings: Settings):
 
 
 def parser():
-    result = argparse.ArgumentParser(description="标题黑名单采集、静态网站生成与本地预览（不下载图片）")
+    result = argparse.ArgumentParser(description="标题和正文黑名单采集、静态网站生成与本地预览（不下载图片）")
     result.add_argument("--config", default="config.toml", help="配置文件路径")
     commands = result.add_subparsers(dest="command", required=True)
     collect = commands.add_parser("crawl", help="采集并生成网站")

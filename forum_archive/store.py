@@ -54,7 +54,7 @@ class Store(AbstractContextManager):
         changes = 0
         with self.db:
             for row in self.db.execute("SELECT id,title,status,body_html FROM threads").fetchall():
-                if rules.blocks(row["title"]):
+                if rules.blocks(row["title"], row["body_html"]):
                     if row["status"] != "blocked":
                         self.db.execute("UPDATE threads SET status='blocked' WHERE id=?", (row["id"],))
                         changes += 1
@@ -83,9 +83,10 @@ class Store(AbstractContextManager):
         with self.db:
             self.db.execute("""UPDATE threads SET title=?,published_at=?,collected_at=?,body_html=?,summary=?,image_count=?,status=?,last_error=NULL
                 WHERE id=?""", (post.title, post.published_at, now.isoformat(),
-                              post.body_html if status == "collected" else None,
-                              post.summary if status == "collected" else None,
-                              post.image_count if status == "collected" else 0, status, thread_id))
+                              # Keep blocked bodies to reapply rules without fetching again.
+                              post.body_html if status != "expired" else None,
+                              post.summary if status != "expired" else None,
+                              post.image_count if status != "expired" else 0, status, thread_id))
         return status
 
     def fail(self, thread_id: str, error: str):

@@ -1,1 +1,1 @@
-"""Collect main posts, filter titles, and publish a static archive."""
+"""Collect main posts, filter titles and bodies, and publish a static archive."""

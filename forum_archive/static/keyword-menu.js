@@ -104,7 +104,7 @@
       url.searchParams.set("filename", `blacklist/${hash}.txt`);
       url.searchParams.set("value", `${text}\n`);
       url.searchParams.set("message", `filter: add keyword ${text}`);
-      url.searchParams.set("description", `建议将“${text}”加入标题黑名单。\n来源页面：${location.origin}${location.pathname}\n\n请创建新分支并提交 PR；合并后由下一轮采集发布生效。`);
+      url.searchParams.set("description", `建议将“${text}”加入标题和正文黑名单。\n来源页面：${location.origin}${location.pathname}\n\n请创建新分支并提交 PR；合并后由下一轮采集发布生效。`);
       // GitHub's editor still requires the user to confirm the branch and PR.
       url.searchParams.set("quick_pull", "1");
       submit.href = url.href;

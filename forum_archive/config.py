@@ -6,6 +6,8 @@ import unicodedata
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
+from bs4 import BeautifulSoup
+
 
 @dataclass
 class Source:
@@ -44,11 +46,17 @@ class TitleFilter:
                                           if (normalized := normalize_title(word))))
         self.patterns = [re.compile(pattern, re.IGNORECASE) for pattern in self.blocked_patterns]
 
-    def blocks(self, title: str) -> bool:
-        normalized = normalize_title(title)
-        return any(word in normalized for word in self.keywords) or any(
-            pattern.search(normalized) for pattern in self.patterns
-        )
+    def blocks(self, title: str, body_html: str = "") -> bool:
+        texts = [title]
+        if body_html:
+            texts.append(BeautifulSoup(body_html, "html.parser").get_text(" ", strip=True))
+        for text in texts:
+            normalized = normalize_title(text)
+            if any(word in normalized for word in self.keywords) or any(
+                pattern.search(normalized) for pattern in self.patterns
+            ):
+                return True
+        return False
 
 
 @dataclass

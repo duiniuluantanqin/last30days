@@ -154,7 +154,7 @@ def crawl(settings: Settings, *, retry_failed: bool = False, fetcher=None, now: 
                     if not source.same_origin(thread["url"]):
                         raise ValueError("状态中的帖子 URL 与来源不一致")
                     post = source.parse_post(client.get(thread["url"]), thread["url"], thread["listed_at"])
-                    status = store.save_post(thread["id"], post, now, settings.filters.blocks(post.title))
+                    status = store.save_post(thread["id"], post, now, settings.filters.blocks(post.title, post.body_html))
                     stats[status] += 1
                 except (httpx.HTTPError, ParseError, RuntimeError, ValueError) as error:
                     store.fail(thread["id"], str(error))

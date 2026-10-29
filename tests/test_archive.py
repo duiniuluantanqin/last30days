@@ -84,6 +84,49 @@ class ArchiveTests(unittest.TestCase):
         self.assertTrue(self.settings.filters.blocks("广告 123"))
         self.assertFalse(self.settings.filters.blocks("普通技术讨论"))
 
+    def test_body_rules_match_full_text_without_html_attributes(self):
+        rules = self.settings.filters
+        for body in ("<p>普通文字</p>" * 100 + "<p>色情</p>",
+                     "<p>色<span>情</span></p>", "<p>&#x8272;&#x60c5;</p>",
+                     "<p>ＡＶ\u200b 女优</p>", "<p>广告 123</p>"):
+            with self.subTest(body=body):
+                self.assertTrue(rules.blocks("正常讨论", body))
+        self.assertFalse(rules.blocks("正常讨论", '<p>普通正文</p><img src="https://cdn.example/色情.jpg" alt="色情">'
+                                      '<a href="https://example.com/色情">普通链接</a>'))
+        self.assertFalse(rules.blocks("色", "<p>情</p>"))
+
+    def test_body_match_stays_blocked_between_runs(self):
+        routes = {"/thread0806.php?page=1": listing([("101", "正常讨论", NOW, NOW)]),
+                  "/htm_data/2610/7/101.html": post(body="<p>普通文字</p>" * 100 + "<p>色情</p>")}
+        first, _ = self.run_crawl(routes)
+        self.assertEqual(first["blocked"], 1)
+        self.assertEqual(first["collected"], 0)
+        second, requested = self.run_crawl(routes)
+        self.assertEqual(second["totals"], {"blocked": 1})
+        self.assertFalse(any(".html" in url for url in requested))
+        release = build(self.settings, now=NOW)
+        self.assertFalse((release / "posts/101.html").exists())
+        self.settings.filters = TitleFilter([])
+        restored = build(self.settings, now=NOW)
+        self.assertTrue((restored / "posts/101.html").is_file())
+
+    def test_new_body_rule_removes_historical_pages(self):
+        with Store(self.settings, NOW) as store:
+            for thread_id, body in (("101", "<p>普通文字</p>" * 100 + "<p>新增<span>词</span></p>"),
+                                    ("102", "<p>保留正文</p>")):
+                store.discover(Thread(thread_id, SOURCE, "正常讨论", NOW.isoformat()), NOW)
+                store.save_post(thread_id, Post("正常讨论", NOW.isoformat(), body, "普通摘要", 0), NOW, False)
+        previous = build(self.settings, now=NOW)
+        self.settings.filters = TitleFilter(["新增词"])
+        latest = build(self.settings, now=NOW)
+        build(self.settings, now=NOW)
+        for release in (previous, latest):
+            self.assertFalse((release / "posts/101.html").exists())
+            self.assertTrue((release / "posts/102.html").is_file())
+        with Store(self.settings, NOW) as store:
+            self.assertEqual(store.removed_ids(), {"101"})
+            self.assertEqual(store.counts(), {"blocked": 1, "collected": 1})
+
     def test_extra_keyword_files_extend_config_blacklist(self):
         config = self.settings.root / "config.toml"
         config.write_text('[source]\nlist_url = "' + SOURCE + '"\n[filter]\nblocked_keywords = ["原有词"]\n', encoding="utf-8")
