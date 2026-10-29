@@ -12,12 +12,6 @@
 
 需要 Python 3.11+。本项目已用 Python 3.14 本地验证，Actions 使用 Python 3.12。
 
-首次取得代码后，先初始化词库子模块（否则会提示词库文件缺失）：
-
-```powershell
-git submodule update --init --depth 1 -- third_party/multilingual-sensitive-words
-```
-
 如果安装了 uv：
 
 ```powershell
@@ -58,33 +52,19 @@ python -m venv .venv
 ## Linux
 
 ```bash
-git submodule update --init --depth 1 -- third_party/multilingual-sensitive-words
 python3 -m venv .venv
 .venv/bin/python -m pip install -e .
 .venv/bin/python -m forum_archive crawl --max-posts 3 --recent-pages 1 --backfill-pages 1
 .venv/bin/python -m forum_archive serve --port 8766
 ```
 
-## 上游色情与广告词库
+## 本地关键词与来源
 
-使用 [yxpil/multilingual-sensitive-words](https://github.com/yxpil/multilingual-sensitive-words) 的 `main` 分支作为 Git submodule，目录为 `third_party/multilingual-sensitive-words`。仅加载以下两个文件：
+关键词统一维护在 `blacklist/keywords.txt`，包括原配置、旧 Block 文件、补充的色情和广告话术，以及原第三方词库中色情、广告两类规则的本地副本。按**标题或正文包含词**匹配，任一命中就屏蔽整篇。
 
-| 类别 | 文件 |
-|---|---|
-| 色情类 | `data/sensitive-words/sw_色情类.txt` |
-| 广告类 | `data/sensitive-words/sw_广告.txt` |
+第三方 Git 子模块已移除，本地运行和 GitHub Actions 都直接读取仓库内的词库，不再拉取或自动更新外部词库。新增规则直接修改 `blacklist/keywords.txt`，或通过网页 `Block` 复制关键词后在 GitHub 编辑该文件并提交 PR。
 
-本地关键词统一维护在 `blacklist/keywords.txt`，原配置中的关键词及旧 Block 哈希文件已迁入该文件，并补充了色情、招嫖引流及广告话术（含常见繁体与英文写法）。本地词与上游词库会合并、规范化并去重，按**标题或正文包含词**匹配，任一命中就屏蔽整篇。其他上游分类不加载。上游文件路径在 `[filter].keyword_files` 中指定；缺失时程序会报错，不会静默跳过。网页 `Block` 提交仍更新本项目的 `blacklist/keywords.txt`，不修改上游子模块。
-
-`archive.yml` 和 `test.yml` 都会先检出子模块，再执行以下更新命令；因此定时、push、PR 测试、手动执行和 `cleanup_only` 运行都会使用上游 `main` 的最新词库，并记录实际 commit SHA：
-
-```bash
-git submodule update --init --remote --depth 1 -- third_party/multilingual-sensitive-words
-```
-
-在本地手动执行同一命令即可更新词库。流水线更新不会自动向本项目提交子模块指针；如果上游没有新提交，运行使用的版本保持不变。词库拉取失败会终止该轮任务，成功后再对已有文章应用新规则、删除命中页面。只有上游数据被读取，不执行该子模块中的程序。
-
-词库按上游 Apache-2.0 许可使用，原许可证保留在子模块中。提交本次改动时需要同时包含 `.gitmodules` 和 `third_party/multilingual-sensitive-words` 的子模块指针；首次克隆也可使用 `git clone --recurse-submodules`。
+迁入来源、版本、标点处理及修改说明见 [blacklist/SOURCES.md](blacklist/SOURCES.md)。原 Apache-2.0 许可证与版权声明保存在 `blacklist/licenses/`。
 
 ## 配置与采集行为
 
@@ -98,7 +78,7 @@ git submodule update --init --remote --depth 1 -- third_party/multilingual-sensi
 - `crawl.max_attempts`：主帖最大跨轮重试次数，默认 3；耗尽后仍保留错误记录。人工重试：`python -m forum_archive crawl --retry-failed`。
 - `blacklist/keywords.txt`：本地标题或正文包含词，一行一个；会先统一全半角、英文大小写，去掉空白和零宽格式字符。配置中的 `filter.blocked_keywords` 仍兼容读取，当前配置已迁出该列表。
 - `filter.blocked_patterns`：分别作用于规范化标题和正文的正则表达式。默认不启用；无效正则会在启动时报告。
-- `filter.keyword_files`：额外的本地逐行词库文件，路径相对于配置文件目录；当前只指定上游色情类和广告类。
+- `filter.keyword_files`：可选的额外本地逐行词库文件，路径相对于配置文件目录；当前配置不使用。缺失时报告文件路径，不会静默跳过。
 - `site`：网站名称、说明和每页数量。
 - `storage`：SQLite 状态与生成网站的目录，路径相对于配置文件所在目录。
 
@@ -141,7 +121,8 @@ git submodule update --init --remote --depth 1 -- third_party/multilingual-sensi
 ```text
 config.toml                      来源、黑名单与运行预算
 blacklist/keywords.txt            通过 Block 复制后集中追加的黑名单关键词
-third_party/multilingual-sensitive-words/  自动更新的上游词库子模块
+blacklist/SOURCES.md             迁入词库的来源、版本及修改说明
+blacklist/licenses/              迁入词库的许可证与版权声明
 forum_archive/                   采集、状态、渲染与本地预览
 forum_archive/templates/         阅读页模板
 forum_archive/static/            仅 CSS，无图片资源下载

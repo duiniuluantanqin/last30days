@@ -144,7 +144,7 @@ class ArchiveTests(unittest.TestCase):
 
     def test_selected_external_word_lists_merge_with_local_keywords(self):
         root = self.settings.root
-        upstream = root / "third_party/words/data/sensitive-words"
+        upstream = root / "wordlists"
         upstream.mkdir(parents=True)
         (upstream / "sw_色情类.txt").write_text("\ufeff色情测试\nDUPLICATE\n\n", encoding="utf-8")
         (upstream / "sw_广告.txt").write_text("  广告测试  \n", encoding="utf-8")
@@ -155,8 +155,8 @@ class ArchiveTests(unittest.TestCase):
         config = root / "config.toml"
         config.write_text('[source]\nlist_url = "' + SOURCE + '"\n[filter]\n'
                           'blocked_keywords = ["本地词", "ＤＵＰＬＩＣＡＴＥ"]\n'
-                          'keyword_files = ["third_party/words/data/sensitive-words/sw_色情类.txt", '
-                          '"third_party/words/data/sensitive-words/sw_广告.txt"]\n', encoding="utf-8")
+                          'keyword_files = ["wordlists/sw_色情类.txt", '
+                          '"wordlists/sw_广告.txt"]\n', encoding="utf-8")
         settings = Settings.load(config)
         for title in ("本地词", "色情测试", "广告测试", "自定义词", "duplicate"):
             self.assertTrue(settings.filters.blocks("包含" + title + "的标题"))
@@ -164,11 +164,11 @@ class ArchiveTests(unittest.TestCase):
         self.assertEqual(settings.filters.keywords.count("duplicate"), 1)
         self.assertNotIn("", settings.filters.keywords)
 
-    def test_missing_external_word_list_fails_with_initialization_hint(self):
+    def test_missing_keyword_file_reports_its_path(self):
         config = self.settings.root / "config.toml"
         config.write_text('[source]\nlist_url = "' + SOURCE + '"\n[filter]\n'
-                          'keyword_files = ["third_party/not-initialized/words.txt"]\n', encoding="utf-8")
-        with self.assertRaisesRegex(ValueError, "git submodule update --init"):
+                          'keyword_files = ["wordlists/missing.txt"]\n', encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "词库文件不存在：wordlists/missing.txt"):
             Settings.load(config)
 
     def test_updated_external_keywords_remove_previously_collected_article(self):

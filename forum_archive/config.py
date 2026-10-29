@@ -113,7 +113,7 @@ class Settings:
         for filename in filters.pop("keyword_files", []):
             keyword_file = root / filename
             if not keyword_file.is_file():
-                raise ValueError(f"词库文件不存在：{filename}；请运行 git submodule update --init 或检查配置")
+                raise ValueError(f"词库文件不存在：{filename}；请检查 filter.keyword_files 配置")
             keywords.extend(keyword_file.read_text(encoding="utf-8-sig").splitlines())
         filters["blocked_keywords"] = keywords
         return cls(root, source, crawl, TitleFilter(**filters), site,
