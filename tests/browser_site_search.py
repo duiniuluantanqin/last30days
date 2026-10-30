@@ -105,7 +105,7 @@ def main():
             page.goto(site_url + "/", wait_until="networkidle")
             if args.http_origin:
                 assert not page.evaluate("isSecureContext")
-            assert page.locator(".sidebar .back-to-top").count() == 1
+            assert page.locator("body > .back-to-top").count() == 1
             search_box = page.locator(".site-search").bounding_box()
             topbar = page.locator(".topbar").bounding_box()
             assert search_box["width"] <= 240 and search_box["height"] <= 40
@@ -120,6 +120,8 @@ def main():
             page.wait_for_function("() => scrollY > 0 && scrollY < 300")
             page.locator(".back-to-top").wait_for(state="visible", timeout=2000)
             button = page.locator(".back-to-top").bounding_box()
+            assert 0 <= 1440 - button["x"] - button["width"] <= 40
+            assert 0 <= 400 - button["y"] - button["height"] <= 40
             assert 0 <= button["y"] and button["y"] + button["height"] <= 400
             page.locator(".back-to-top").click()
             page.wait_for_function("() => scrollY === 0")
@@ -258,6 +260,8 @@ def main():
             button = page.locator(".back-to-top").bounding_box()
             assert 0 <= button["x"] and button["x"] + button["width"] <= 390
             assert 0 <= button["y"] and button["y"] + button["height"] <= 844
+            assert 0 <= 390 - button["x"] - button["width"] <= 24
+            assert 0 <= 844 - button["y"] - button["height"] <= 24
             page.screenshot(path=str(output / "search-mobile.png"), full_page=True)
             search("   ")
             assert "请输入关键词" in page.locator("#search-status").inner_text()

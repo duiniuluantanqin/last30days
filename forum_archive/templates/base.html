@@ -19,7 +19,6 @@
       {% for item in months %}<a class="month-link {% if month == item %}active{% endif %}" href="{{ base_path }}/archive/{{ item }}.html">{{ item[:4] }} 年 {{ item[5:] }} 月</a>{% endfor %}
       </div>{% endif %}
       <div class="sidebar-note"><span class="small-dot" aria-hidden="true"></span>{{ site.subtitle }}<br><a href="{{ source_url }}" target="_blank" rel="noopener noreferrer nofollow">查看来源版块</a></div>
-      <button class="back-to-top" type="button" hidden><span aria-hidden="true">↑</span> 回顶部</button>
     </aside>
     <div class="main-column">
       <header class="topbar"><a href="{{ base_path }}/">讨论归档</a><div class="topbar-actions">
@@ -33,6 +32,10 @@
       <footer><span>{{ site.title }} · 个人讨论归档</span><span>按标题和正文规则收录 · 图片使用原链接</span></footer>
     </div>
   </div>
+  <button class="back-to-top" type="button" hidden>
+    <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h14M12 20V8m-5 5 5-5 5 5"/></svg>
+    <span>回顶部</span>
+  </button>
   <script src="{{ base_path }}/assets/browse.js" defer></script>
   {% block scripts %}{% endblock %}
   {% if site.github_repository %}
