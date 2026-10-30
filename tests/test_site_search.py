@@ -60,8 +60,8 @@ class SiteSearchTests(unittest.TestCase):
             self.assertEqual(store.articles()[0]["body_html"], body)
 
     def test_search_excludes_removed_articles_and_invalidates_old_full_text_data(self):
-        self.save("101", "保留标题", "<p>正常文字</p>")
-        self.save("102", "需要下架", "<p>正文目标词</p>")
+        self.save("101", "保留标题", "<p>正常文字</p>" * 25)
+        self.save("102", "需要下架", "<p>正文目标词</p>" * 20)
         self.save("103", "过期文章", "<p>旧正文</p>", date=NOW - timedelta(days=31))
         with Store(self.settings, NOW) as store:
             store.discover(Thread("104", self.settings.source.list_url, "未取得正文", NOW.isoformat()), NOW)
@@ -75,7 +75,7 @@ class SiteSearchTests(unittest.TestCase):
 
     def test_infinite_scroll_preserves_routes_without_page_controls(self):
         for number in range(25):
-            self.save(str(100 + number), f"标题{number}", "<p>普通正文</p>")
+            self.save(str(100 + number), f"标题{number}", "<p>普通正文</p>" * 25)
         release = build(self.settings, now=NOW)
         for filename, next_page in (("page-7.html", "/page-8.html"),
                                     ("archive/2026-10-7.html", "/archive/2026-10-8.html")):
@@ -89,7 +89,7 @@ class SiteSearchTests(unittest.TestCase):
 
     def test_search_is_available_on_lists_and_posts_without_block_configuration(self):
         self.settings.site = replace(self.settings.site, github_repository="")
-        self.save("101", "正常标题", "<p>正常文字</p>")
+        self.save("101", "正常标题", "<p>正常文字</p>" * 25)
         release = build(self.settings, now=NOW)
         for filename in ("index.html", "posts/101.html", "archive/2026-10.html", "search.html"):
             page = BeautifulSoup((release / filename).read_text(encoding="utf-8"), "html.parser")
@@ -113,7 +113,7 @@ class SiteSearchTests(unittest.TestCase):
 
     def test_pages_prefix_covers_navigation_assets_and_pagination(self):
         for number in range(3):
-            self.save(str(101 + number), f"标题{number}", '<p>普通正文</p><img src="https://cdn.example/original.jpg">')
+            self.save(str(101 + number), f"标题{number}", '<p>普通正文</p>' * 25 + '<img src="https://cdn.example/original.jpg">')
         release = build(self.settings, now=NOW, base_path="/last30days")
         for filename in ("index.html", "page-2.html", "archive/2026-10.html", "posts/101.html", "search.html", "404.html"):
             page = BeautifulSoup((release / filename).read_text(encoding="utf-8"), "html.parser")

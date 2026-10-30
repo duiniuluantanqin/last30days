@@ -32,7 +32,7 @@ def listing(rows, last_page=1):
     return '<html><meta charset="utf-8"><table>' + ''.join(cells) + f'</table><a href="thread0806.php?fid=7&amp;page={last_page}">末页</a></html>'
 
 
-def post(title="正常讨论", body="<p>正文内容</p>", created=NOW):
+def post(title="正常讨论", body="<p>" + "正文内容" * 25 + "</p>", created=NOW):
     return (f'<html><meta charset="utf-8"><div>注册：2001-01-01</div><table><tr><td><h4 class="f16">{title}</h4>'
             f'<div id="conttpc" class="tpc_content">{body}</div></td></tr></table>'
             f'<div class="tipad">Posted: <span data-timestamp="{int(created.timestamp())}">日期</span></div>'
@@ -113,7 +113,7 @@ class ArchiveTests(unittest.TestCase):
     def test_today_source_migrates_same_forum_without_losing_archive(self):
         with Store(self.settings, NOW) as store:
             store.discover(Thread("100", SOURCE, "历史文章", NOW.isoformat()), NOW)
-            store.save_post("100", Post("历史文章", NOW.isoformat(), "<p>正文</p>", "摘要", 0), NOW, False)
+            store.save_post("100", Post("历史文章", NOW.isoformat(), "<p>正文</p>" * 50, "摘要", 0), NOW, False)
             store.set("recent_page", "12")
             store.set("backfill_page", "34")
         settings = replace(self.settings, source=replace(self.settings.source, list_url=SOURCE + "&search=today"))
@@ -184,22 +184,26 @@ class ArchiveTests(unittest.TestCase):
 
     def test_configured_number_v_marker_matches_titles_and_body_text_only(self):
         filters = TitleFilter(blocked_patterns=Settings.load(ROOT / "config.toml").filters.blocked_patterns)
-        for marker in ("[24V]", "[1v]", "[123V]", "[ 24 V ]", "［２４Ｖ］", "[2\u200b4V]"):
+        for marker in ("[24V]", "[1v]", "[123V]", "[ 24 V ]", "［２４Ｖ］", "[2\u200b4V]",
+                       "[24v+12p]", "[5P+4V]", "[abc24Vxyz]", "[24VA]", "［５Ｐ＋４Ｖ］"):
             with self.subTest(marker=marker):
                 self.assertTrue(filters.blocks("普通讨论" + marker))
                 self.assertTrue(filters.blocks("普通讨论", "<p>" + "正文" * 100 + marker + "</p>"))
-        self.assertTrue(filters.blocks("普通讨论", "<p>&#91;24<span>V</span>&#93;</p>"))
-        for title in ("24V 电源", "[V]", "[24]", "[V24]", "[24VA]", "(24V)"):
+        self.assertTrue(filters.blocks("普通讨论", "<p>正文</p>" * 50 + "<p>&#91;24<span>V</span>&#93;</p>"))
+        self.assertTrue(filters.blocks("普通讨论", "<p>正文</p>" * 50 + "<p>&#91;5P+4<span>V</span>&#93;</p>"))
+        for title in ("24V 电源", "[V]", "[24]", "[V24]", "(24V)", "[5P+4P]", "[24P+V]",
+                      "[24]v", "[前缀]24v[后缀]", "[24v", "24v]"):
             with self.subTest(title=title):
                 self.assertFalse(filters.blocks(title))
-        self.assertFalse(filters.blocks("普通讨论", '<p title="[24V]">正文</p><img src="https://cdn.example/[24V].jpg"><a href="https://example.com/[24V]">链接</a>'))
+                self.assertFalse(filters.blocks("普通讨论", "<p>正文</p>" * 50 + "<p>" + title + "</p>"))
+        self.assertFalse(filters.blocks("普通讨论", "<p>正文</p>" * 50 + '<p title="[24v+12p]">正文</p><img src="https://cdn.example/[5P+4V].jpg"><a href="https://example.com/[abc24Vxyz]">链接</a>'))
 
     def test_number_v_marker_removes_existing_title_and_body_matches(self):
         settings = replace(self.settings, filters=TitleFilter(blocked_patterns=Settings.load(ROOT / "config.toml").filters.blocked_patterns))
         with Store(settings, NOW) as store:
-            for thread_id, title, body in (("101", "普通讨论[24V]", "<p>正文</p>"),
-                                          ("102", "普通讨论", "<p>" + "正文" * 100 + "[2<span>4V]</span></p>"),
-                                          ("103", "24V 电源", "<p>普通正文</p>")):
+            for thread_id, title, body in (("101", "普通讨论[24v+12p]", "<p>正文</p>" * 50),
+                                          ("102", "普通讨论", "<p>" + "正文" * 100 + "[5P+4<span>V]</span></p>"),
+                                          ("103", "24V 电源", "<p>普通正文</p>" * 25 + "<p>[5P+4P]</p>")):
                 store.discover(Thread(thread_id, SOURCE, title, NOW.isoformat()), NOW)
                 store.save_post(thread_id, Post(title, NOW.isoformat(), body, "摘要", 0), NOW, False)
         old = settings.output / "release-old/posts"
@@ -218,20 +222,86 @@ class ArchiveTests(unittest.TestCase):
         with Store(settings, NOW) as store:
             self.assertEqual(store.removed_ids(), {"101", "102"})
 
+    def test_short_body_filter_counts_visible_text_after_display_cleanup(self):
+        rules = TitleFilter([])
+        self.assertFalse(rules.blocks("只有标题，尚未获取正文"))
+        self.assertFalse(rules.blocks("只有标题，尚未获取正文", None))
+        for count in (0, 1, 99, 100, 101):
+            body = '<p title="' + "属" * 100 + '">' + " 文\n\t" * count + '</p><img src="https://cdn.example/a.jpg" alt="' + "图" * 100 + '">'
+            with self.subTest(count=count):
+                self.assertEqual(rules.blocks("长标题" * 100, body), count < 100)
+        for count in (99, 100):
+            for suffix in ("<p>赞(88)</p>", "<p>防水<span>图</span></p>",
+                           "<p>&#x9632;&#x6c34;&#x56fe;</p><p>赞（88）</p>"):
+                with self.subTest(count=count, suffix=suffix):
+                    self.assertEqual(rules.blocks("普通讨论", "<p>" + "&#25991;" * count + "</p>" + suffix), count < 100)
+        self.assertTrue(rules.blocks("普通讨论", ""))
+        self.assertTrue(rules.blocks("普通讨论", "<p>" + "文" * 95 + "</p><div>赞<span>(8</span>8)</div>"))
+
+    def test_short_body_filter_applies_during_crawl_and_preserves_blocked_raw_body(self):
+        bodies = {"101": "<p>" + "文" * 99 + "</p>",
+                  "102": "<p>" + "文" * 100 + "</p>",
+                  "103": "<p>" + "文" * 99 + '防水图</p><img src="https://cdn.example/a.jpg"><p>赞(88)</p>',
+                  "104": "<p>" + "文" * 100 + "防水图</p><p>赞(88)</p>"}
+        routes = {"/thread0806.php?page=1": listing([(key, "普通讨论", NOW, NOW) for key in bodies])}
+        routes.update({f"/htm_data/2610/7/{key}.html": post(body=body) for key, body in bodies.items()})
+        stats, requested = self.run_crawl(routes)
+        self.assertEqual(stats["collected"], 2)
+        self.assertEqual(stats["blocked"], 2)
+        self.assertFalse(any("cdn.example" in url for url in requested))
+        with Store(self.settings, NOW) as store:
+            self.assertEqual({row["id"] for row in store.articles()}, {"102", "104"})
+            self.assertEqual(set(json.loads(store.get("new_article_ids"))), {"102", "104"})
+            self.assertEqual(store.removed_ids(), {"101", "103"})
+            raw = store.db.execute("SELECT body_html FROM threads WHERE id='103'").fetchone()[0]
+            self.assertIn("防水图", raw)
+            self.assertIn("赞(88)", raw)
+            self.assertIn("<img", raw)
+        stats, requested = self.run_crawl(routes)
+        self.assertEqual(stats["collected"], 0)
+        self.assertEqual(stats["totals"], {"blocked": 2, "collected": 2})
+        self.assertFalse(any(".html" in url for url in requested))
+
+    def test_short_body_filter_removes_existing_pages_and_old_search_data(self):
+        bodies = {"101": "<p>" + "文" * 99 + "防水<span>图</span></p><p>赞(88)</p>",
+                  "102": "<p>" + "文" * 100 + "</p>"}
+        with Store(self.settings, NOW) as store:
+            for thread_id, body in bodies.items():
+                store.discover(Thread(thread_id, SOURCE, "普通讨论", NOW.isoformat()), NOW)
+                store.save_post(thread_id, Post("普通讨论", NOW.isoformat(), body, "摘要", 0), NOW, False)
+        old = self.settings.output / "release-old"
+        (old / "posts").mkdir(parents=True)
+        (old / "assets").mkdir()
+        (old / "assets/search-index.js").write_text("old full text", encoding="utf-8")
+        for thread_id in bodies:
+            (old / f"posts/{thread_id}.html").write_text("旧文章", encoding="utf-8")
+        release = build(self.settings, now=NOW)
+        self.assertFalse((release / "posts/101.html").exists())
+        self.assertFalse((old / "posts/101.html").exists())
+        self.assertFalse((old / "assets/search-index.js").exists())
+        self.assertTrue((release / "posts/102.html").is_file())
+        self.assertTrue((old / "posts/102.html").is_file())
+        data = json.loads((release / "assets/search-index.js").read_text(encoding="utf-8")
+                          .removeprefix("window.archiveSearchIndex = ").removesuffix(";\n"))
+        self.assertEqual([article["id"] for article in data["articles"]], ["102"])
+        with Store(self.settings, NOW) as store:
+            self.assertEqual(store.removed_ids(), {"101"})
+            self.assertEqual(store.db.execute("SELECT body_html FROM threads WHERE id='101'").fetchone()[0], bodies["101"])
+
     def test_image_count_filter_keeps_twenty_and_blocks_twenty_one_before_display_rules(self):
         image = '<img src="https://cdn.example/original.jpg">'
         for count in (0, 1, 20, 21, 30):
             with self.subTest(count=count):
-                self.assertEqual(self.settings.filters.blocks("普通讨论", "<p>正文</p>" + image * count), count > 20)
+                self.assertEqual(self.settings.filters.blocks("普通讨论", "<p>正文</p>" * 50 + image * count), count > 20)
         for body in ("<p>防水图</p>" + image * 21, "<p>" + "文字" * 200 + "</p>" + image * 21):
             self.assertTrue(self.settings.filters.blocks("普通讨论", body))
-        self.assertFalse(self.settings.filters.blocks("普通讨论", "<p>文字 img img</p>"))
+        self.assertFalse(self.settings.filters.blocks("普通讨论", "<p>文字 img img</p>" * 20))
 
     def test_image_count_filter_applies_during_crawl_without_image_downloads(self):
         image = '<img src="https://cdn.example/original.jpg">'
         routes = {"/thread0806.php?page=1": listing([("101", "二十张图片", NOW, NOW), ("102", "二十一张图片", NOW, NOW)]),
-                  "/htm_data/2610/7/101.html": post(title="二十张图片", body="<p>正文</p>" + image * 20),
-                  "/htm_data/2610/7/102.html": post(title="二十一张图片", body="<p>正文</p>" + image * 21)}
+                  "/htm_data/2610/7/101.html": post(title="二十张图片", body="<p>正文</p>" * 50 + image * 20),
+                  "/htm_data/2610/7/102.html": post(title="二十一张图片", body="<p>正文</p>" * 50 + image * 21)}
         stats, requests = self.run_crawl(routes)
         self.assertEqual(stats["collected"], 1)
         self.assertEqual(stats["blocked"], 1)
@@ -249,7 +319,7 @@ class ArchiveTests(unittest.TestCase):
             for thread_id, count in (("101", 20), ("102", 21)):
                 store.discover(Thread(thread_id, SOURCE, "正常讨论", NOW.isoformat()), NOW)
                 # Simulate an older database with inaccurate image_count metadata.
-                store.save_post(thread_id, Post("正常讨论", NOW.isoformat(), "<p>防水图</p>" + image * count, "摘要", 0), NOW, False)
+                store.save_post(thread_id, Post("正常讨论", NOW.isoformat(), "<p>正文</p>" * 50 + "<p>防水图</p>" + image * count, "摘要", 0), NOW, False)
         old = self.settings.output / "release-old/posts"
         old.mkdir(parents=True)
         (old / "102.html").write_text("旧文章", encoding="utf-8")
@@ -273,7 +343,7 @@ class ArchiveTests(unittest.TestCase):
     def test_new_badges_rotate_by_crawl_not_timestamp_or_build(self):
         with Store(self.settings, NOW) as store:
             store.discover(Thread("100", SOURCE, "已有文章", NOW.isoformat()), NOW)
-            store.save_post("100", Post("已有文章", NOW.isoformat(), "<p>原有正文</p>", "摘要", 0), NOW, False)
+            store.save_post("100", Post("已有文章", NOW.isoformat(), "<p>原有正文</p>" * 25, "摘要", 0), NOW, False)
         self.assertEqual(self.new_ids(build(self.settings, now=NOW)), set())
         first_routes = {"/thread0806.php?page=1": listing([("101", "本次文章", NOW, NOW)]),
                         "/htm_data/2610/7/101.html": post(title="本次文章")}
@@ -322,10 +392,10 @@ class ArchiveTests(unittest.TestCase):
                      "<p>色<span>情</span></p>", "<p>&#x8272;&#x60c5;</p>",
                      "<p>ＡＶ\u200b 女优</p>", "<p>广告 123</p>"):
             with self.subTest(body=body):
-                self.assertTrue(rules.blocks("正常讨论", body))
-        self.assertFalse(rules.blocks("正常讨论", '<p>普通正文</p><img src="https://cdn.example/色情.jpg" alt="色情">'
+                self.assertTrue(rules.blocks("正常讨论", "<p>正文</p>" * 50 + body))
+        self.assertFalse(rules.blocks("正常讨论", '<p>普通正文</p>' * 25 + '<img src="https://cdn.example/色情.jpg" alt="色情">'
                                       '<a href="https://example.com/色情">普通链接</a>'))
-        self.assertFalse(rules.blocks("色", "<p>情</p>"))
+        self.assertFalse(rules.blocks("色", "<p>情</p>" + "<p>正文</p>" * 50))
 
     def test_body_match_stays_blocked_between_runs(self):
         routes = {"/thread0806.php?page=1": listing([("101", "正常讨论", NOW, NOW)]),
@@ -345,7 +415,7 @@ class ArchiveTests(unittest.TestCase):
     def test_new_body_rule_removes_historical_pages(self):
         with Store(self.settings, NOW) as store:
             for thread_id, body in (("101", "<p>普通文字</p>" * 100 + "<p>新增<span>词</span></p>"),
-                                    ("102", "<p>保留正文</p>")):
+                                    ("102", "<p>保留正文</p>" * 25)):
                 store.discover(Thread(thread_id, SOURCE, "正常讨论", NOW.isoformat()), NOW)
                 store.save_post(thread_id, Post("正常讨论", NOW.isoformat(), body, "普通摘要", 0), NOW, False)
         previous = build(self.settings, now=NOW)
@@ -413,7 +483,7 @@ class ArchiveTests(unittest.TestCase):
         before = Settings.load(config)
         with Store(before, NOW) as store:
             store.discover(Thread("101", SOURCE, "新增广告词讨论", NOW.isoformat()), NOW)
-            store.save_post("101", Post("新增广告词讨论", NOW.isoformat(), "<p>正文</p>", "正文", 0), NOW, False)
+            store.save_post("101", Post("新增广告词讨论", NOW.isoformat(), "<p>正文</p>" * 50, "正文", 0), NOW, False)
         first = build(before, now=NOW)
         self.assertTrue((first / "posts/101.html").is_file())
         word_file.write_text("其他词\n新增广告词\n", encoding="utf-8")
@@ -440,7 +510,7 @@ class ArchiveTests(unittest.TestCase):
     def test_merged_keyword_file_hides_previously_collected_article(self):
         with Store(self.settings, NOW) as store:
             store.discover(Thread("101", SOURCE, "新增关键词讨论", NOW.isoformat()), NOW)
-            store.save_post("101", Post("新增关键词讨论", NOW.isoformat(), "<p>正文</p>", "正文", 0), NOW, False)
+            store.save_post("101", Post("新增关键词讨论", NOW.isoformat(), "<p>正文</p>" * 50, "正文", 0), NOW, False)
         first = build(self.settings, now=NOW)
         self.assertTrue((first / "posts/101.html").is_file())
         config = self.settings.root / "config.toml"
@@ -493,7 +563,7 @@ class ArchiveTests(unittest.TestCase):
         with Store(self.settings, NOW) as store:
             for index, marker in enumerate(markers, 201):
                 thread_id = str(index)
-                body = (f'<p>保留正文：{marker}</p><img src="https://cdn.example/first.jpg">'
+                body = ('<p>正文</p>' * 50 + f'<p>保留正文：{marker}</p><img src="https://cdn.example/first.jpg">'
                         '<p>后续文字也保留</p><img src="https://cdn.example/second.jpg">')
                 store.discover(Thread(thread_id, SOURCE, "正常讨论", NOW.isoformat()), NOW)
                 store.save_post(thread_id, Post("正常讨论", NOW.isoformat(), body, "正文摘要防水图", 2), NOW, False)
@@ -516,7 +586,7 @@ class ArchiveTests(unittest.TestCase):
     def test_build_keeps_images_for_posts_without_marker(self):
         with Store(self.settings, NOW) as store:
             store.discover(Thread("201", SOURCE, "正常讨论", NOW.isoformat()), NOW)
-            body = '<p>普通正文</p><img src="https://cdn.example/original.jpg">'
+            body = '<p>普通正文</p>' * 25 + '<img src="https://cdn.example/original.jpg">'
             store.save_post("201", Post("正常讨论", NOW.isoformat(), body, "普通正文", 1), NOW, False)
         release = build(self.settings, now=NOW)
         page = BeautifulSoup((release / "posts/201.html").read_text(encoding="utf-8"), "html.parser")
@@ -528,12 +598,12 @@ class ArchiveTests(unittest.TestCase):
     def test_build_removes_trailing_like_counts_from_existing_posts(self):
         image = '<img src="https://cdn.example/original.jpg">'
         cases = [
-            ("<p>保留正文</p><div>赞(88)</div>", "保留正文", 0),
-            ("<p>保留正文</p><div>赞<span>(</span><b>123</b>)</div><br> \n", "保留正文", 0),
-            ("<p>保留正文</p><div>赞（ 0 ）</div>", "保留正文", 0),
-            ("<p>正文提到赞(88)，仍需保留。</p>", "正文提到赞(88)，仍需保留。", 0),
+            ("<p>" + "保留正文" * 25 + "</p><div>赞(88)</div>", "保留正文" * 25, 0),
+            ("<p>" + "保留正文" * 25 + "</p><div>赞<span>(</span><b>123</b>)</div><br> \n", "保留正文" * 25, 0),
+            ("<p>" + "保留正文" * 25 + "</p><div>赞（ 0 ）</div>", "保留正文" * 25, 0),
+            ("<p>" + "文" * 100 + "正文提到赞(88)，仍需保留。</p>", "文" * 100 + "正文提到赞(88)，仍需保留。", 0),
             ("<p>" + "文" * 200 + "</p>" + image + "<div>赞(88)</div>", "文" * 200, 0),
-            ("<p>保留正文</p>" + image + "<div>赞(88)</div>", "保留正文", 1),
+            ("<p>" + "保留正文" * 25 + "</p>" + image + "<div>赞(88)</div>", "保留正文" * 25, 1),
         ]
         with Store(self.settings, NOW) as store:
             for index, (body, _, _) in enumerate(cases, 401):
@@ -595,7 +665,7 @@ class ArchiveTests(unittest.TestCase):
     def test_end_to_end_no_image_requests_and_idempotent_replay(self):
         html = listing([("101", "正常讨论", NOW, NOW), ("102", "色情帖子", NOW, NOW), ("103", "旧帖", NOW - timedelta(days=40), NOW)])
         routes = {"/thread0806.php?page=1": html,
-                  "/htm_data/2610/7/101.html": post(body='<p>正常正文</p><img ess-data="https://cdn.example/original.jpg">')}
+                  "/htm_data/2610/7/101.html": post(body='<p>正常正文</p>' * 25 + '<img ess-data="https://cdn.example/original.jpg">')}
         first, requested = self.run_crawl(routes)
         self.assertEqual(first["collected"], 1)
         self.assertEqual(first["totals"], {"blocked": 1, "collected": 1, "expired": 1})
@@ -639,7 +709,7 @@ class ArchiveTests(unittest.TestCase):
     def test_new_rule_removes_old_public_article_in_next_release(self):
         with Store(self.settings, NOW) as store:
             store.discover(Thread("101", SOURCE, "正常讨论", NOW.isoformat()), NOW)
-            store.save_post("101", Post("正常讨论", NOW.isoformat(), "<p>正文</p>", "正文", 0), NOW, False)
+            store.save_post("101", Post("正常讨论", NOW.isoformat(), "<p>正文</p>" * 50, "正文", 0), NOW, False)
         first = build(self.settings, now=NOW)
         self.assertTrue((first / "posts/101.html").exists())
         self.settings.filters = TitleFilter(["正常"])
@@ -653,7 +723,7 @@ class ArchiveTests(unittest.TestCase):
         with Store(self.settings, NOW) as store:
             for thread_id, title in (("101", "需要屏蔽的讨论"), ("102", "保留的讨论")):
                 store.discover(Thread(thread_id, SOURCE, title, NOW.isoformat()), NOW)
-                store.save_post(thread_id, Post(title, NOW.isoformat(), "<p>正文</p>", "正文", 0), NOW, False)
+                store.save_post(thread_id, Post(title, NOW.isoformat(), "<p>正文</p>" * 50, "正文", 0), NOW, False)
         first = build(self.settings, now=NOW)
         second = build(self.settings, now=NOW)
         unrelated = self.settings.output / "unrelated/posts/101.html"
@@ -684,7 +754,7 @@ class ArchiveTests(unittest.TestCase):
             for thread_id, date in dates.items():
                 title = "文章" + thread_id
                 store.discover(Thread(thread_id, SOURCE, title, date.isoformat()), earlier)
-                store.save_post(thread_id, Post(title, date.isoformat(), "<p>保留正文</p>", "摘要", 2), earlier, False)
+                store.save_post(thread_id, Post(title, date.isoformat(), "<p>保留正文</p>" * 25, "摘要", 2), earlier, False)
         old_release = build(self.settings, now=earlier)
         self.assertTrue((old_release / "posts/101.html").is_file())
         latest = build(self.settings, now=NOW)

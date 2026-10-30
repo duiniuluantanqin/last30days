@@ -91,8 +91,8 @@ class RemoteCleanupTests(unittest.TestCase):
         settings = Settings.load(config)
         now = datetime.now(ZoneInfo(settings.source.timezone))
         with Store(settings, now) as store:
-            for thread_id, title, body in (("101", "标题新增词讨论", "普通正文"),
-                                          ("102", "保留讨论", "普通正文"),
+            for thread_id, title, body in (("101", "标题新增词讨论", "普通正文" * 25),
+                                          ("102", "保留讨论", "普通正文" * 25),
                                           ("103", "正常标题", "普通文字" * 100 + "正文新增词")):
                 store.discover(Thread(thread_id, settings.source.list_url, title, now.isoformat()), now)
                 store.save_post(thread_id, Post(title, now.isoformat(), f"<p>{body}</p>", body[:180], 0), now, False)
@@ -126,7 +126,7 @@ class RemoteCleanupTests(unittest.TestCase):
         with Store(settings, now) as store:
             for thread_id, count in (("101", 21), ("102", 20)):
                 store.discover(Thread(thread_id, settings.source.list_url, "普通讨论", now.isoformat()), now)
-                body = '<p>普通正文</p>' + '<img src="https://cdn.example/a.jpg">' * count
+                body = '<p>普通正文</p>' * 25 + '<img src="https://cdn.example/a.jpg">' * count
                 store.save_post(thread_id, Post("普通讨论", now.isoformat(), body, "摘要", count), now, False)
         release = build(settings, now=now)
         with Store(settings, now) as store:

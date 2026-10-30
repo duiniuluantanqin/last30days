@@ -8,6 +8,8 @@ from zoneinfo import ZoneInfo
 
 from bs4 import BeautifulSoup
 
+from .content import clean_display_text
+
 
 @dataclass
 class Source:
@@ -43,9 +45,9 @@ class TitleFilter:
                                           if (normalized := normalize_title(word))))
         self.patterns = [re.compile(pattern, re.IGNORECASE) for pattern in self.blocked_patterns]
 
-    def blocks(self, title: str, body_html: str = "") -> bool:
+    def blocks(self, title: str, body_html: str | None = None) -> bool:
         texts = [title]
-        if body_html:
+        if body_html is not None:
             body = BeautifulSoup(body_html, "html.parser")
             if len(body.select("img")) > 20:
                 return True
@@ -55,6 +57,10 @@ class TitleFilter:
             if any(word in normalized for word in self.keywords) or any(
                 pattern.search(normalized) for pattern in self.patterns
             ):
+                return True
+        if body_html is not None:
+            clean_display_text(body)
+            if sum(not char.isspace() for char in body.get_text()) < 100:
                 return True
         return False
 

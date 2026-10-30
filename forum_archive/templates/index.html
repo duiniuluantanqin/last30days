@@ -6,7 +6,7 @@
 <div class="article-list">
 {% for article in articles %}
 <article class="article-row">
-  <div class="article-info"><h2><a href="{{ base_path }}/posts/{{ article.id }}.html">{{ article.title }}</a>{% if article.is_new %}<span class="new-badge" title="最近一次爬取新增" aria-label="最近一次爬取新增">NEW</span>{% endif %}</h2><p class="excerpt">{{ article.summary or '打开阅读原帖内容。' }}</p><div class="article-meta"><span>技术讨论</span>{% if article.image_count %}<span>{{ article.image_count }} 张外链图片</span>{% endif %}<time class="article-date" datetime="{{ article.published_at }}">{{ article.published_at|date('%m.%d %H:%M') }}</time></div></div>
+  <div class="article-info"><h2><a href="{{ base_path }}/posts/{{ article.id }}.html" target="_blank" rel="noopener noreferrer">{{ article.title }}</a>{% if article.is_new %}<span class="new-badge" title="最近一次爬取新增" aria-label="最近一次爬取新增">NEW</span>{% endif %}</h2><p class="excerpt">{{ article.summary or '打开阅读原帖内容。' }}</p><div class="article-meta"><span>技术讨论</span>{% if article.image_count %}<span>{{ article.image_count }} 张外链图片</span>{% endif %}<time class="article-date" datetime="{{ article.published_at }}">{{ article.published_at|date('%m.%d %H:%M') }}</time></div></div>
 </article>
 {% endfor %}
 </div>

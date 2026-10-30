@@ -14,6 +14,7 @@ from bs4 import BeautifulSoup, NavigableString
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from .config import Settings
+from .content import clean_display_text
 from .store import Store
 
 
@@ -46,30 +47,14 @@ def build(settings: Settings, *, now: datetime | None = None, base_path: str = "
     for article in articles:
         article["is_new"] = article["id"] in new_article_ids
         content = BeautifulSoup(article["body_html"], "html.parser")
-        likes = re.search(r"赞\s*[(（]\s*\d+\s*[)）]\s*$", content.get_text())
-        if likes:
-            offset = 0
-            for node in list(content.strings):
-                text = str(node)
-                node.replace_with(text[:max(0, likes.start() - offset)])
-                offset += len(text)
-            article["body_html"] = str(content)
-            article["summary"] = " ".join(content.get_text(" ", strip=True).split())[:180]
         if "防水图" in content.get_text():
             for image in content.select("img"):
                 image.decompose()
-            # Use text offsets so a marker split across tags is removed too.
-            removed = {index for match in re.finditer("防水图", content.get_text())
-                       for index in range(*match.span())}
-            offset = 0
-            for node in list(content.strings):
-                text = str(node)
-                node.replace_with("".join(char for index, char in enumerate(text, offset) if index not in removed))
-                offset += len(text)
+            article["image_count"] = 0
+        if clean_display_text(content):
             article["body_html"] = str(content)
             article["summary"] = " ".join(content.get_text(" ", strip=True).split())[:180]
-            article["image_count"] = 0
-        elif sum(not char.isspace() for char in content.get_text()) >= 200:
+        if sum(not char.isspace() for char in content.get_text()) >= 200:
             trailing_images = []
             for node in reversed(list(content.descendants)):
                 if node.name == "img":

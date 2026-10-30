@@ -96,7 +96,7 @@ SQLite 包含结构化正文与状态，是权威归档，需要备份。公开�
 
 可选浏览器检查需要在执行该命令的 Python 环境中安装 Playwright 和可用的 Chromium/Chrome。先启动演示预览，再运行 `.venv/Scripts/python.exe -X utf8 tests/browser_keyword_menu.py --url http://127.0.0.1:8765/`。检查实际鼠标划词、GitHub 新建文件链接、预填内容、独立文件名、重复词、长度限制和手机弹窗位置，不向 GitHub 提交任何内容。测试不使用系统剪贴板。
 
-`.venv/Scripts/python.exe -X utf8 tests/browser_site_search.py` 使用临时数据库和随机本地端口，自动验证标题/全文搜索、连续滚动加载、月份范围、加载失败重试、页码控件移除、HTML 转义、手机布局及现有 CSP。该命令需在同时装有本项目依赖和 Playwright 的 Python 环境中运行，不访问源站或提交 GitHub 内容。
+`.venv/Scripts/python.exe -X utf8 tests/browser_site_search.py` 使用临时数据库和随机本地端口，自动验证标题/全文搜索、连续滚动加载、月份范围、加载失败重试、页码控件移除、文章在新选项卡打开且保留原列表、短距离滚动后的回顶部、HTML 转义、手机布局及现有 CSP。该命令需在同时装有本项目依赖和 Playwright 的 Python 环境中运行，不访问源站或提交 GitHub 内容。
 
 `.venv/Scripts/python.exe -X utf8 tests/browser_preview.py` 在临时目录复制应用，验证配置、CSS、JavaScript、模板、Python 响应头和词库修改后浏览器自动刷新，不改动工作区源码或真实数据库。
 

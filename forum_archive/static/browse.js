@@ -13,7 +13,7 @@
   });
 
   const backToTop = document.querySelector(".back-to-top");
-  const updateBackToTop = () => { backToTop.hidden = window.scrollY < 300; };
+  const updateBackToTop = () => { backToTop.hidden = window.scrollY <= 0; };
   window.addEventListener("scroll", updateBackToTop, { passive: true });
   updateBackToTop();
   backToTop.addEventListener("click", () => window.scrollTo({ top: 0 }));

@@ -116,6 +116,14 @@ def main():
             assert page.locator(".new-badge").count() == 1
             assert page.locator(".article-row").first.locator(".new-badge").inner_text() == "NEW"
             assert page.locator(".article-row").nth(1).locator(".new-badge").count() == 0
+            page.evaluate("window.scrollTo({top: 120, behavior: 'instant'})")
+            page.wait_for_function("() => scrollY > 0 && scrollY < 300")
+            page.locator(".back-to-top").wait_for(state="visible", timeout=2000)
+            button = page.locator(".back-to-top").bounding_box()
+            assert 0 <= button["y"] and button["y"] + button["height"] <= 400
+            page.locator(".back-to-top").click()
+            page.wait_for_function("() => scrollY === 0")
+            assert page.locator(".back-to-top").is_hidden()
             page.goto(site_url + "/page-4.html", wait_until="networkidle")
             assert urlsplit(page.url).path == base_path + "/page-4.html"
             no_page_controls()
@@ -127,14 +135,29 @@ def main():
             page.goto(site_url + "/archive/2026-10-3.html", wait_until="networkidle")
             assert urlsplit(page.url).path == base_path + "/archive/2026-10-3.html"
             no_page_controls()
-            page.locator('.article-info h2 a').first.click()
+            archive_url = page.url
+            with page.expect_popup() as opened:
+                page.locator('.article-info h2 a').first.click()
+            article = opened.value
+            article.wait_for_load_state("networkidle")
+            assert urlsplit(article.url).path == base_path + "/posts/105.html"
+            assert page.url == archive_url
+            assert article.evaluate("window.opener === null")
+            article.close()
             search("标题专属")
             assert page.locator("#search-results .article-row").count() == 1
             assert "标题专属" in page.locator("#search-results h2").inner_text()
             assert page.locator("#search-results .new-badge").count() == 1
-            page.locator("#search-results h2 a").click()
-            assert urlsplit(page.url).path == base_path + "/posts/101.html"
-            assert page.locator(".post-heading .new-badge").inner_text() == "NEW"
+            search_url = page.url
+            with page.expect_popup() as opened:
+                page.locator("#search-results h2 a").click()
+            article = opened.value
+            article.wait_for_load_state("networkidle")
+            assert urlsplit(article.url).path == base_path + "/posts/101.html"
+            assert article.locator(".post-heading .new-badge").inner_text() == "NEW"
+            assert page.url == search_url
+            assert article.evaluate("window.opener === null")
+            article.close()
             search("全文目标")
             assert "7 篇" in page.locator("#search-status").inner_text()
             assert page.locator("#search-results .article-row").count() == 2
@@ -188,6 +211,7 @@ def main():
             assert links == [f"{base_path}/posts/{number}.html" for number in range(101, 108)]
             assert page.locator(".new-badge").count() == 2
             assert page.locator(".feed-loader").get_attribute("data-next-page") == ""
+            assert page.locator('.article-info h2 a:not([target="_blank"])').count() == 0
             no_page_controls()
             assert urlsplit(page.url).path == base_path + "/"
             assert page.locator(".back-to-top").is_visible()
@@ -212,6 +236,7 @@ def main():
             assert page.locator(".feed-status").inner_text() == "到底啦，这是我的底线了。"
             assert page.locator("#search-results .new-badge").count() == 2
             assert page.locator("#search-results img").count() == 0
+            assert page.locator('#search-results h2 a:not([target="_blank"])').count() == 0
             no_page_controls()
             page.goto(site_url + "/search.html?q=全文目标&page=2", wait_until="networkidle")
             assert parse_qs(urlsplit(page.url).query) == {"q": ["全文目标"], "page": ["2"]}
@@ -247,7 +272,7 @@ def main():
             server.shutdown()
             server.server_close()
             thread.join()
-    print("Infinite scroll without page controls: filters, order, retry, months, queries, back-to-top, CSP and mobile passed")
+    print("Infinite scroll: filters, order, retry, months, queries, new tabs, back-to-top, CSP and mobile passed")
 
 
 if __name__ == "__main__":
