@@ -1,9 +1,10 @@
 from contextlib import AbstractContextManager
 from datetime import datetime, timedelta
 import sqlite3
+from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
 from .config import Settings, TitleFilter
-from .source import Post, Thread
+from .source import ForumSource, Post, Thread
 
 
 class Store(AbstractContextManager):
@@ -23,15 +24,23 @@ class Store(AbstractContextManager):
             CREATE INDEX IF NOT EXISTS threads_status ON threads(status, attempts);
         """)
         source = self.get("source_url")
+        # Switching this same list to its today view keeps the authoritative archive.
+        if source and source != settings.source.list_url and ForumSource(settings.source).today_only:
+            parts = urlsplit(settings.source.list_url)
+            query = parse_qs(parts.query)
+            query.pop("search")
+            original = urlunsplit((*parts[:3], urlencode(query, doseq=True), parts.fragment))
+            if source == original:
+                self.set("source_url", settings.source.list_url)
+                self.set("recent_page", "2")
+                source = settings.source.list_url
         if source and source != settings.source.list_url:
             self.db.close()
             raise ValueError("采集来源与现有状态不一致，请为新来源使用独立数据库")
         if not source:
             self.set("source_url", settings.source.list_url)
-            self.set("archive_start", (now - timedelta(days=settings.crawl.initial_days)).isoformat())
-            self.set("backfill_page", "1")
             self.set("recent_page", "1")
-        self.cutoff = max(datetime.fromisoformat(self.get("archive_start")), now - timedelta(days=30))
+        self.cutoff = now - timedelta(days=30)
 
     def __exit__(self, *args):
         self.db.close()
@@ -63,7 +72,13 @@ class Store(AbstractContextManager):
                     self.db.execute("UPDATE threads SET status=?,attempts=0,last_error=NULL WHERE id=?", (state, row["id"]))
         return changes
 
-    def pending(self, limit: int, max_attempts: int):
+    def pending(self, limit: int, max_attempts: int, *, today: datetime | None = None):
+        if today is not None:
+            start = today.replace(hour=0, minute=0, second=0, microsecond=0)
+            return self.db.execute("""SELECT * FROM threads WHERE status='pending' AND attempts < ?
+                AND COALESCE(published_at,listed_at,first_seen) >= ? AND COALESCE(published_at,listed_at,first_seen) < ?
+                ORDER BY COALESCE(listed_at,first_seen) DESC,id DESC LIMIT ?""",
+                (max_attempts, start.isoformat(), (start + timedelta(days=1)).isoformat(), limit)).fetchall()
         return self.db.execute("""SELECT * FROM threads WHERE status='pending' AND attempts < ?
             ORDER BY COALESCE(listed_at,first_seen) DESC,id DESC LIMIT ?""", (max_attempts, limit)).fetchall()
 
@@ -78,15 +93,17 @@ class Store(AbstractContextManager):
                 image_count=0,last_error=NULL WHERE id=?""", expired)
         return len(expired)
 
-    def save_post(self, thread_id: str, post: Post, now: datetime, blocked: bool):
+    def save_post(self, thread_id: str, post: Post, now: datetime, blocked: bool, *, today_only: bool = False):
         status = "blocked" if blocked else ("expired" if datetime.fromisoformat(post.published_at) < self.cutoff else "collected")
+        if today_only and datetime.fromisoformat(post.published_at).astimezone(now.tzinfo).date() != now.date():
+            status = "skipped"
         with self.db:
             self.db.execute("""UPDATE threads SET title=?,published_at=?,collected_at=?,body_html=?,summary=?,image_count=?,status=?,last_error=NULL
                 WHERE id=?""", (post.title, post.published_at, now.isoformat(),
                               # Keep blocked bodies to reapply rules without fetching again.
-                              post.body_html if status != "expired" else None,
-                              post.summary if status != "expired" else None,
-                              post.image_count if status != "expired" else 0, status, thread_id))
+                              post.body_html if status not in {"expired", "skipped"} else None,
+                              post.summary if status not in {"expired", "skipped"} else None,
+                              post.image_count if status not in {"expired", "skipped"} else 0, status, thread_id))
         return status
 
     def fail(self, thread_id: str, error: str):

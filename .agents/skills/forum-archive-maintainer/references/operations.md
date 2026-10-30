@@ -32,13 +32,13 @@ python -m venv .venv
 先用小批量验证真实来源：
 
 ```powershell
-.venv/Scripts/python.exe -m forum_archive crawl --max-posts 3 --recent-pages 1 --backfill-pages 1
+.venv/Scripts/python.exe -m forum_archive crawl --max-posts 3 --recent-pages 1
 .venv/Scripts/python.exe -m forum_archive serve --port 8766
 ```
 
 打开 <http://127.0.0.1:8766>。预览服务只监听本机；另开终端继续采集后，刷新网页即可看到新的版本。不必重启服务。
 
-继续按配置补采、查看进度：
+继续按配置采集今日主帖、查看进度：
 
 ```powershell
 .venv/Scripts/python.exe -m forum_archive crawl
@@ -57,7 +57,7 @@ python -m venv .venv
 ```bash
 python3 -m venv .venv
 .venv/bin/python -m pip install -e .
-.venv/bin/python -m forum_archive crawl --max-posts 3 --recent-pages 1 --backfill-pages 1
+.venv/bin/python -m forum_archive crawl --max-posts 3 --recent-pages 1
 .venv/bin/python -m forum_archive serve --port 8766
 ```
 
@@ -90,7 +90,7 @@ SQLite 包含结构化正文与状态，是权威归档，需要备份。公开�
 .venv/Scripts/python.exe -m unittest discover -s tests -v
 ```
 
-覆盖标题和全文规则、20/21 张图片边界与历史页面下架、正文命中后的持续屏蔽、真实页面结构的时间戳、来源版块限制、主帖与回复分离、正文清理、懒加载原图链接、零图片请求、去重、失败重试、历史扫描边界、robots 限速和重新筛选后的旧页面下线。
+覆盖标题和全文规则、20/21 张图片边界与历史页面下架、正文命中后的持续屏蔽、真实页面结构的时间戳、来源版块限制、主帖与回复分离、正文清理、懒加载原图链接、零图片请求、去重、失败重试、今日分页与跨日重置、楼主 Posted 时间及跨年解析、同版块状态迁移、robots 限速和重新筛选后的旧页面下线。
 
 可选浏览器检查需要在执行该命令的 Python 环境中安装 Playwright 和可用的 Chromium/Chrome。先启动演示预览，再运行 `.venv/Scripts/python.exe -X utf8 tests/browser_keyword_menu.py --url http://127.0.0.1:8765/`。检查实际鼠标划词、GitHub 文件编辑链接、剪贴板复制、失败提示、重复词、长度限制和手机弹窗位置，不向 GitHub 提交任何内容。测试会覆盖系统剪贴板。
 

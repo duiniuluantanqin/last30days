@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 import json
 import logging
 import time
@@ -88,9 +88,9 @@ class Fetcher:
 
 
 def crawl(settings: Settings, *, retry_failed: bool = False, fetcher=None, now: datetime | None = None) -> dict:
-    now = now or datetime.now(ZoneInfo(settings.source.timezone))
+    now = (now or datetime.now(ZoneInfo(settings.source.timezone))).astimezone(ZoneInfo(settings.source.timezone))
     source = ForumSource(settings.source)
-    stats = {"list_pages": 0, "discovered": 0, "collected": 0, "blocked": 0, "expired": 0, "errors": 0}
+    stats = {"list_pages": 0, "discovered": 0, "collected": 0, "blocked": 0, "expired": 0, "skipped": 0, "errors": 0}
     with Store(settings, now) as store:
         if retry_failed:
             store.retry_failed()
@@ -107,6 +107,8 @@ def crawl(settings: Settings, *, retry_failed: bool = False, fetcher=None, now: 
                     return scanned[page]
                 listing = source.parse_listing(client.get(source.page_url(page)), page)
                 for thread in listing.threads:
+                    if source.today_only and thread.listed_at and datetime.fromisoformat(thread.listed_at).astimezone(now.tzinfo).date() != now.date():
+                        continue
                     store.discover(thread, now)
                 stats["list_pages"] += 1
                 stats["discovered"] += len(listing.threads)
@@ -115,48 +117,29 @@ def crawl(settings: Settings, *, retry_failed: bool = False, fetcher=None, now: 
 
             # Refresh the front page every time; continue deeper scans across runs.
             first = discover_page(1)
+            if source.today_only and store.get("today_scan_date") != now.date().isoformat():
+                store.set("recent_page", "2")
             recent_page = max(2, int(store.get("recent_page", "2")))
-            recent_cutoff = now - timedelta(hours=settings.crawl.overlap_hours)
             for _ in range(max(0, settings.crawl.recent_pages_per_run - 1)):
                 if recent_page > first.last_page:
                     recent_page = 2
                     break
-                listing = discover_page(recent_page)
-                # All discovered threads are persisted even if a page spans the cutoff.
-                dates = [datetime.fromisoformat(t.last_reply_at) for t in listing.threads if t.last_reply_at]
+                discover_page(recent_page)
                 recent_page += 1
-                if len(dates) == len(listing.threads) and max(dates) < recent_cutoff:
-                    recent_page = 2
-                    break
             store.set("recent_page", str(recent_page))
-
-            # This forum orders ordinary threads by their last reply. A page of old
-            # creation dates cannot end backfill, but a page whose last replies are
-            # ALL older than the cutoff can. Missing timestamps force a full scan.
-            if store.get("backfill_complete") != "true":
-                page = int(store.get("backfill_page", "1"))
-                for _ in range(settings.crawl.backfill_pages_per_run):
-                    if page > first.last_page:
-                        store.set("backfill_complete", "true")
-                        break
-                    listing = discover_page(page)
-                    page += 1
-                    store.set("backfill_page", str(page))
-                    replies = [datetime.fromisoformat(t.last_reply_at) for t in listing.threads if t.last_reply_at]
-                    if len(replies) == len(listing.threads) and max(replies) < store.cutoff:
-                        store.set("backfill_complete", "true")
-                        break
+            if source.today_only:
+                store.set("today_scan_date", now.date().isoformat())
 
             stats["blocked"] += store.apply_filter(settings.filters)
             # Expire saved bodies as well as old discovered links before fetching.
             stats["expired"] += store.expire_old()
             new_article_ids = []
-            for thread in store.pending(settings.crawl.max_posts_per_run, settings.crawl.max_attempts):
+            for thread in store.pending(settings.crawl.max_posts_per_run, settings.crawl.max_attempts, today=now if source.today_only else None):
                 try:
                     if not source.same_origin(thread["url"]):
                         raise ValueError("状态中的帖子 URL 与来源不一致")
-                    post = source.parse_post(client.get(thread["url"]), thread["url"], thread["listed_at"])
-                    status = store.save_post(thread["id"], post, now, settings.filters.blocks(post.title, post.body_html))
+                    post = source.parse_post(client.get(thread["url"]), thread["url"], thread["listed_at"], now=now)
+                    status = store.save_post(thread["id"], post, now, settings.filters.blocks(post.title, post.body_html), today_only=source.today_only)
                     stats[status] += 1
                     if status == "collected":
                         new_article_ids.append(thread["id"])
@@ -170,7 +153,5 @@ def crawl(settings: Settings, *, retry_failed: bool = False, fetcher=None, now: 
                 store.set("last_success_at", now.isoformat())
             store.set("crawl_in_progress", "")
             stats["totals"] = store.counts()
-            stats["backfill_page"] = int(store.get("backfill_page"))
-            stats["backfill_complete"] = store.get("backfill_complete") == "true"
             stats["retry_exhausted"] = store.db.execute("SELECT COUNT(*) FROM threads WHERE status='pending' AND attempts>=?", (settings.crawl.max_attempts,)).fetchone()[0]
     return stats

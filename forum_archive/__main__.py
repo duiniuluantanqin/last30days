@@ -51,7 +51,6 @@ def parser():
     collect = commands.add_parser("crawl", help="采集并生成网站")
     collect.add_argument("--max-posts", type=int, help="本次最多获取的主帖数")
     collect.add_argument("--recent-pages", type=int, help="本次最近列表扫描页数")
-    collect.add_argument("--backfill-pages", type=int, help="本次历史列表扫描页数")
     collect.add_argument("--retry-failed", action="store_true", help="重置已耗尽的正文重试次数")
     commands.add_parser("demo", help="生成独立演示数据，不访问来源站点")
     for name, help_text in (("build", "从已保存内容重新生成网站"), ("status", "查看采集进度"), ("serve", "启动本地预览")):
@@ -76,7 +75,7 @@ def main(argv=None):
         if getattr(args, "demo", False) or args.command == "demo":
             settings = demo_settings(settings)
         if args.command == "crawl":
-            for flag, field in (("max_posts", "max_posts_per_run"), ("recent_pages", "recent_pages_per_run"), ("backfill_pages", "backfill_pages_per_run")):
+            for flag, field in (("max_posts", "max_posts_per_run"), ("recent_pages", "recent_pages_per_run")):
                 value = getattr(args, flag)
                 if value is not None:
                     if value < 1:
@@ -96,9 +95,9 @@ def main(argv=None):
             serve(settings, args.host, args.port)
         elif args.command == "status":
             with Store(settings, datetime.now(ZoneInfo(settings.source.timezone))) as store:
-                status = {"counts": store.counts(), "archive_start": store.get("archive_start"),
+                status = {"counts": store.counts(), "retention_cutoff": store.cutoff.isoformat(),
                           "last_scan_at": store.get("last_scan_at"), "last_success_at": store.get("last_success_at"),
-                          "backfill_page": store.get("backfill_page"), "backfill_complete": store.get("backfill_complete") == "true",
+                          "today_scan_date": store.get("today_scan_date"), "recent_page": store.get("recent_page"),
                           "failures": [dict(row) for row in store.db.execute("SELECT id,attempts,last_error FROM threads WHERE status='pending' AND last_error IS NOT NULL")]}
             print(json.dumps(status, ensure_ascii=False, indent=2))
         return 0

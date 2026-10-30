@@ -23,10 +23,7 @@ class Source:
 
 @dataclass
 class Crawl:
-    initial_days: int = 30
-    overlap_hours: int = 48
     recent_pages_per_run: int = 5
-    backfill_pages_per_run: int = 5
     max_posts_per_run: int = 60
     max_attempts: int = 3
 

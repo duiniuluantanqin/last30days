@@ -46,7 +46,7 @@ class ArchiveTests(unittest.TestCase):
         root = Path(self.temp.name)
         original = Settings.load(ROOT / "config.toml")
         self.settings = replace(original, root=root, source=replace(original.source, list_url=SOURCE, request_interval_seconds=0, retries=0),
-                                crawl=replace(original.crawl, recent_pages_per_run=1, backfill_pages_per_run=1),
+                                crawl=replace(original.crawl, recent_pages_per_run=1),
                                 filters=TitleFilter(["色情", "av女优"], [r"广告\d+"]),
                                 database=root / "data/archive.sqlite3", output=root / "site")
 
@@ -83,6 +83,104 @@ class ArchiveTests(unittest.TestCase):
         self.assertTrue(self.settings.filters.blocks("ＡＶ女优"))
         self.assertTrue(self.settings.filters.blocks("广告 123"))
         self.assertFalse(self.settings.filters.blocks("普通技术讨论"))
+
+    def test_today_source_keeps_search_parameter_on_all_pages(self):
+        source = ForumSource(replace(self.settings.source, list_url=SOURCE + "&search=today"))
+        self.assertEqual(parse_qs(source.page_url(2).split("?", 1)[1]), {"fid": ["7"], "search": ["today"], "page": ["2"]})
+        html = listing([("101", "今日主题", NOW, NOW)])
+        html += '<a href="?fid=7&search=today&page=3">3</a><a href="?fid=7&page=999">普通列表</a>'
+        self.assertEqual(source.parse_listing(html, 1).last_page, 3)
+
+    def test_plain_posted_time_uses_original_post_and_handles_new_year(self):
+        source = ForumSource(self.settings.source)
+        for clock, reference, expected in (("10-28 19:17", NOW, "2026-10-28T19:17:00+08:00"),
+                                           ("12-31 23:59", NOW.replace(year=2027, month=1, day=1), "2026-12-31T23:59:00+08:00")):
+            html = post().replace(f'<span data-timestamp="{int(NOW.timestamp())}">日期</span>', clock + " 樓主")
+            html += '<div class="tipad">Posted: 10-29 23:59 1樓</div>'
+            result = source.parse_post(html, SOURCE, None, now=reference)
+            self.assertEqual(result.published_at, expected)
+        html = post().replace(f'<span data-timestamp="{int(NOW.timestamp())}">日期</span>', '10-28 19:17 樓主')
+        result = source.parse_post(html, SOURCE, NOW.isoformat(), now=NOW)
+        self.assertEqual(result.published_at, "2026-10-28T19:17:00+08:00")
+        html = html.replace('10-28 19:17', '02-30 19:17')
+        with self.assertRaises(ParseError):
+            source.parse_post(html, SOURCE, None, now=NOW)
+        html = post().replace(f'<span data-timestamp="{int(NOW.timestamp())}">日期</span>', '无日期')
+        html += '<div class="tipad">Posted: 10-29 23:59 1樓</div>'
+        with self.assertRaises(ParseError):
+            source.parse_post(html, SOURCE, None, now=NOW)
+
+    def test_today_source_migrates_same_forum_without_losing_archive(self):
+        with Store(self.settings, NOW) as store:
+            store.discover(Thread("100", SOURCE, "历史文章", NOW.isoformat()), NOW)
+            store.save_post("100", Post("历史文章", NOW.isoformat(), "<p>正文</p>", "摘要", 0), NOW, False)
+            store.set("recent_page", "12")
+            store.set("backfill_page", "34")
+        settings = replace(self.settings, source=replace(self.settings.source, list_url=SOURCE + "&search=today"))
+        with Store(settings, NOW) as store:
+            self.assertEqual(store.get("source_url"), settings.source.list_url)
+            self.assertEqual(store.get("recent_page"), "2")
+            self.assertEqual(store.get("backfill_page"), "34")
+            self.assertEqual([row["id"] for row in store.articles()], ["100"])
+        with self.assertRaises(ValueError):
+            with Store(replace(settings, source=replace(settings.source, list_url=SOURCE.replace("fid=7", "fid=8") + "&search=today")), NOW):
+                pass
+
+    def test_today_crawl_skips_old_queue_and_checks_posted_time_and_sort_order(self):
+        yesterday = NOW - timedelta(days=1)
+        with Store(self.settings, yesterday) as store:
+            store.discover(Thread("100", SOURCE, "旧待采任务", yesterday.isoformat()), yesterday)
+        self.settings.source = replace(self.settings.source, list_url=SOURCE + "&search=today")
+        self.settings.crawl.recent_pages_per_run = 2
+        html = listing([("101", "较早发布", NOW, NOW), ("102", "较晚发布", NOW, NOW), ("103", "昨日置顶", yesterday, NOW)], 2)
+        html = html.replace('&amp;page=2', '&amp;search=today&amp;page=2')
+        body = lambda clock: post().replace(f'<span data-timestamp="{int(NOW.timestamp())}">日期</span>', clock + " 樓主")
+        routes = {"/thread0806.php?page=1": html,
+                  "/thread0806.php?page=2": listing([("104", "实际昨日发布", NOW, NOW)]),
+                  "/htm_data/2610/7/101.html": body("10-29 08:17"),
+                  "/htm_data/2610/7/102.html": body("10-29 11:17"),
+                  "/htm_data/2610/7/104.html": body("10-28 19:17")}
+        stats, requested = self.run_crawl(routes)
+        self.assertEqual(stats["collected"], 2)
+        self.assertEqual(stats["skipped"], 1)
+        self.assertEqual(stats["list_pages"], 2)
+        self.assertFalse(any("100.html" in url or "103.html" in url for url in requested))
+        self.assertTrue(all(parse_qs(url.split("?", 1)[1])["search"] == ["today"] for url in requested if "thread0806" in url))
+        with Store(self.settings, NOW) as store:
+            self.assertEqual([row["id"] for row in store.articles()], ["102", "101"])
+            self.assertEqual(json.loads(store.get("new_article_ids")), ["102", "101"])
+            self.assertIsNone(store.db.execute("SELECT body_html FROM threads WHERE id='104'").fetchone()[0])
+        self.settings.crawl.recent_pages_per_run = 1
+        routes["/thread0806.php?page=1"] = listing([("105", "次日主题", (NOW + timedelta(days=1)), (NOW + timedelta(days=1)))])
+        routes["/htm_data/2610/7/105.html"] = post(created=NOW + timedelta(days=1))
+        client, requested = self.fetcher(routes)
+        with patch("forum_archive.crawler.time.sleep"):
+            stats = crawl(self.settings, fetcher=client, now=NOW + timedelta(days=1))
+        self.assertEqual(stats["collected"], 1)
+        self.assertFalse(any("100.html" in url for url in requested))
+        with Store(self.settings, NOW + timedelta(days=1)) as store:
+            self.assertEqual([row["id"] for row in store.articles()], ["105", "102", "101"])
+
+    def test_today_pagination_cursor_resets_each_day_and_today_failures_retry(self):
+        self.settings.source = replace(self.settings.source, list_url=SOURCE + "&search=today")
+        self.settings.crawl.recent_pages_per_run = 2
+        html = listing([("101", "今日主题", NOW, NOW)], 4).replace('&amp;page=4', '&amp;search=today&amp;page=4')
+        routes = {f"/thread0806.php?page={page}": html for page in (1, 2, 3)}
+        routes["/htm_data/2610/7/101.html"] = 503
+        stats, _ = self.run_crawl(routes)
+        self.assertEqual(stats["errors"], 1)
+        with Store(self.settings, NOW) as store:
+            self.assertEqual(store.get("recent_page"), "3")
+        routes["/htm_data/2610/7/101.html"] = post()
+        stats, requested = self.run_crawl(routes)
+        self.assertEqual(stats["collected"], 1)
+        self.assertTrue(any("page=3" in url for url in requested))
+        client, requested = self.fetcher(routes)
+        with patch("forum_archive.crawler.time.sleep"):
+            stats = crawl(self.settings, fetcher=client, now=NOW + timedelta(days=1))
+        self.assertEqual(stats["collected"], 0)
+        self.assertTrue(any("page=2" in url for url in requested))
+        self.assertFalse(any("page=3" in url or ".html" in url for url in requested))
 
     def test_configured_number_v_marker_matches_titles_and_body_text_only(self):
         filters = TitleFilter(blocked_patterns=Settings.load(ROOT / "config.toml").filters.blocked_patterns)
@@ -370,7 +468,6 @@ class ArchiveTests(unittest.TestCase):
         result = ForumSource(self.settings.source).parse_listing(html, 1)
         self.assertEqual([t.id for t in result.threads], ["123"])
         self.assertEqual(result.threads[0].listed_at, NOW.isoformat())
-        self.assertEqual(result.threads[0].last_reply_at, NOW.isoformat())
         self.assertEqual(result.last_page, 5)
 
     def test_original_images_sanitized_without_reply_content(self):
@@ -536,7 +633,7 @@ class ArchiveTests(unittest.TestCase):
         with self.assertRaises(ParseError):
             self.run_crawl(routes)
         with Store(self.settings, NOW) as store:
-            self.assertEqual(store.get("backfill_page"), "1")
+            self.assertEqual(store.get("recent_page"), "1")
             self.assertEqual(store.get("last_scan_at"), "")
 
     def test_new_rule_removes_old_public_article_in_next_release(self):
@@ -620,20 +717,15 @@ class ArchiveTests(unittest.TestCase):
             self.assertEqual(store.pending(10, 3), [])
             self.assertIn("101", store.removed_ids())
 
-    def test_last_reply_not_creation_date_controls_backfill_boundary(self):
-        self.settings.crawl.backfill_pages_per_run = 2
+    def test_old_backfill_metadata_does_not_trigger_history_requests(self):
+        with Store(self.settings, NOW) as store:
+            store.set("backfill_page", "7")
+            store.set("backfill_complete", "false")
         old = NOW - timedelta(days=40)
-        routes = {"/thread0806.php?page=1": listing([("101", "旧帖被顶起", old, NOW)], 4),
-                  "/thread0806.php?page=2": listing([("102", "旧帖仍被回复", old, NOW)], 4)}
-        result, _ = self.run_crawl(routes)
-        self.assertFalse(result["backfill_complete"])
-        self.assertEqual(result["backfill_page"], 3)
-
-    def test_old_last_reply_ends_backfill(self):
-        old = NOW - timedelta(days=40)
-        result, _ = self.run_crawl({"/thread0806.php?page=1": listing([("101", "旧讨论", old, old)], 10)})
-        self.assertTrue(result["backfill_complete"])
+        result, requested = self.run_crawl({"/thread0806.php?page=1": listing([("101", "旧讨论", old, old)], 10)})
+        self.assertEqual(result["list_pages"], 1)
         self.assertEqual(result["collected"], 0)
+        self.assertFalse(any("page=7" in url for url in requested))
 
     def test_recent_scan_does_not_stop_on_bumped_old_creation_dates(self):
         self.settings.crawl.recent_pages_per_run = 3

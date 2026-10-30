@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 import ipaddress
 import re
 from urllib.parse import parse_qs, urlencode, urljoin, urlsplit, urlunsplit
@@ -21,7 +21,6 @@ class Thread:
     url: str
     title: str
     listed_at: str | None
-    last_reply_at: str | None = None
 
 
 @dataclass
@@ -87,6 +86,7 @@ class ForumSource:
         self.settings = settings
         self.origin = urlsplit(settings.list_url)
         self.forum_id = parse_qs(self.origin.query).get("fid", ["7"])[0]
+        self.today_only = parse_qs(self.origin.query).get("search") == ["today"]
 
     def same_origin(self, url: str) -> bool:
         parsed = urlsplit(url)
@@ -119,8 +119,7 @@ class ForumSource:
             row = anchor.find_parent("tr")
             date_node = row.select_one(".f12") if row else None
             threads[thread_id] = Thread(thread_id, urlunsplit((*parts[:4], "")), title,
-                                        timestamp(date_node, self.settings.timezone),
-                                        timestamp(row.select_one("a.f10") if row else None, self.settings.timezone))
+                                        timestamp(date_node, self.settings.timezone))
         if not threads:
             raise ParseError("列表中没有可识别的本版块帖子，可能是访问限制或页面结构变化；进度未推进")
         last_page = page
@@ -129,13 +128,14 @@ class ForumSource:
             parts = urlsplit(url)
             query = parse_qs(parts.query)
             if (self.same_origin(url) and parts.path == self.origin.path
-                    and query.get("fid", [self.forum_id])[0] == self.forum_id):
+                    and query.get("fid", [self.forum_id])[0] == self.forum_id
+                    and (not self.today_only or query.get("search") == ["today"])):
                 value = query.get("page", [""])[0]
                 if value.isdigit():
                     last_page = max(last_page, int(value))
         return Listing(list(threads.values()), last_page)
 
-    def parse_post(self, html: bytes | str, url: str, listed_at: str | None) -> Post:
+    def parse_post(self, html: bytes | str, url: str, listed_at: str | None, *, now: datetime | None = None) -> Post:
         soup = BeautifulSoup(html, "html.parser")
         content = soup.select_one("#conttpc")
         if content is None:
@@ -145,7 +145,21 @@ class ForumSource:
         if heading is None or not heading.get_text(strip=True):
             raise ParseError("无法取得主帖完整标题")
         title = heading.get_text(" ", strip=True)
-        published_at = timestamp(soup.select_one(".tipad"), self.settings.timezone) or listed_at
+        posted = soup.select_one(".tipad")
+        published_at = timestamp(posted, self.settings.timezone)
+        if not published_at and posted:
+            match = re.search(r"\bPosted\s*:\s*(\d{2})-(\d{2})\s+(\d{2}):(\d{2})", posted.get_text(" ", strip=True), re.I)
+            if match:
+                reference = datetime.fromisoformat(listed_at) if listed_at else (now or datetime.now(ZoneInfo(self.settings.timezone)))
+                reference = reference.astimezone(ZoneInfo(self.settings.timezone))
+                try:
+                    date = reference.replace(month=int(match[1]), day=int(match[2]), hour=int(match[3]), minute=int(match[4]), second=0, microsecond=0)
+                    if date > reference + timedelta(days=1):
+                        date = date.replace(year=date.year - 1)
+                    published_at = date.isoformat()
+                except ValueError:
+                    raise ParseError("楼主 Posted 发布时间无效")
+        published_at = published_at or listed_at
         if not published_at:
             raise ParseError("无法确定主帖发布时间，未将注册日期或回复日期作为发帖时间")
         cleaned, summary, images = clean_content(content, url)

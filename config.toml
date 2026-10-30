@@ -1,5 +1,5 @@
 [source]
-list_url = "https://t66y.com/thread0806.php?fid=7"
+list_url = "https://t66y.com/thread0806.php?fid=7&search=today"
 timezone = "Asia/Shanghai"
 request_interval_seconds = 2.0
 timeout_seconds = 25
@@ -9,10 +9,7 @@ respect_robots = true
 user_agent = "ForumArchive/0.1 (personal text archive; no image downloads)"
 
 [crawl]
-initial_days = 30
-overlap_hours = 48
 recent_pages_per_run = 5
-backfill_pages_per_run = 5
 max_posts_per_run = 60
 max_attempts = 3
 
