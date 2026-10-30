@@ -1,14 +1,14 @@
 ---
 name: forum-archive-maintainer
-description: 维护本仓库的论坛采集、标题与正文黑名单、图片展示规则、Block 菜单及 GitHub Actions 到 ECS 的静态归档发布。用于相关规则变更、故障排查和回归验证。
+description: 维护本仓库的论坛采集、标题与正文黑名单、图片展示规则、Block 菜单、GitHub Pages 发布及 ECS 数据库持久化。用于相关规则变更、故障排查和回归验证。
 ---
 
 # 论坛归档维护
 
-先阅读仓库根目录的 `AGENTS.md`，再按任务读取附件；根目录 `README.md` 仅保留网站介绍和安装、构建方法。不要将本地验证结果表述为已在 ECS 生效。
+先阅读仓库根目录的 `AGENTS.md`，再按任务读取附件；根目录 `README.md` 仅保留网站介绍和安装、构建方法。不要将本地验证结果表述为已在线上生效。
 
 - 内容过滤、图片规则、搜索、New 标记、采集预算和 Block 行为：读取 [内容与展示规则](references/rules.md)。
-- 本地采集、验证、数据目录、GitHub Actions、ECS 发布、备份和版本清理：读取 [运行、测试与部署](references/operations.md)。其中服务器配置步骤仅供参考，Caddy 由用户自行维护。
+- 本地采集、验证、数据目录、GitHub Actions、Pages 发布及 ECS 数据库备份：读取 [运行、测试与部署](references/operations.md)。旧 ECS 网站的 Caddy 由用户自行维护。
 
 ## 选择修改位置
 
@@ -19,13 +19,13 @@ description: 维护本仓库的论坛采集、标题与正文黑名单、图片�
 - 图片数量：清理后的原始正文超过 20 个 `img` 标签时过滤整篇，20 张保留，重复 URL 仍按标签计数。规则在 `TitleFilter.blocks` 中统一用于采集与重筛，不使用展示层隐藏后的图片数或可能陈旧的数据库计数；测试覆盖 20/21 边界及历史页面清理。
 - 词库仅依赖本地 `blacklist/blacklist.txt`；原上游的色情和广告规则已迁入，来源和许可证见 `blacklist/SOURCES.md`，不要恢复子模块更新步骤。少数迁入规则刻意保留逗号以维持原匹配范围，不能无差别剥除所有词的标点。
 - 图片隐藏：检查 `site.py` 的构建处理和 `templates/post.html`、`index.html`。在文章通过数量过滤后仅改变公开展示，保持数据库原始归档可重建；同步更新剩余图片数量、图片提示和必要的摘要文字。具体条件见 `references/rules.md` 与当前测试。
-- 搜索和分页：检查 `site.py`、`templates/search.html`、`templates/pagination.html`、`static/browse.js` 和 `static/search.js`。搜索数据只在搜索页加载，包含公开文章的完整可见正文纯文本；不得包含已屏蔽或过期内容。下架时本地构建与远程 `purge-blocked.sh` 均使旧全文索引失效，保护当前索引。浏览器验证使用 `tests/browser_site_search.py` 的临时数据，检查全文、月份路径、搜索词保留、滚动加载、无页码控件及 CSP。
+- 搜索和分页：检查 `site.py`、`templates/search.html`、`templates/pagination.html`、`static/browse.js` 和 `static/search.js`。搜索数据只在搜索页加载，包含公开文章的完整可见正文纯文本；不得包含已屏蔽或过期内容。下架时本地构建使旧全文索引失效，保护当前索引；Pages 仅上传新版本。浏览器验证使用 `tests/browser_site_search.py` 的临时数据，检查全文、月份路径、搜索词保留、滚动加载、无页码控件及 CSP。
 - 新文章标记：`crawler.py` 每次完成爬取将成功新增 ID 写入 SQLite meta 的 `new_article_ids`，零新增写空清单；`site.py` 为公开文章生成 `is_new`，同步列表、文章页及搜索数据。不可根据发布时间或最后一次成功更新时间推断，不得在单独构建时轮换批次；回归测试覆盖部分失败、零新增及列表错误。
 - Block：检查 `static/keyword-menu.js` 和 `templates/base.html`。单按钮打开 GitHub 新建文件页，预填独立的 `blacklist/block-*.txt` 和划词；用户提交后，`scripts/merge_blacklist.py` 在采集发布前去重合并到 `blacklist/blacklist.txt`，删除输入文件并由流水线提交回默认分支；目标仓库和分支由 `site.github_repository`、`site.github_branch` 配置。不创建 Issue 或 PR，不引入 OAuth 服务或浏览器令牌。普通 HTTP 须验证预填中文、emoji、特殊字符和独立文件名；不能依赖 Clipboard API 或 Web Crypto。
-- 历史文章清理或发布：检查 `site.py`、`scripts/remote.py`、`scripts/purge-blocked.sh` 和 `archive.yml`。黑名单变更须先应用到恢复的服务器数据库，再生成新站点和删除清单；旧 HTML 通过数字帖子 ID 精确删除。源站访问失败不能阻止已完成的下架。不要把公开输出目录或 Actions 缓存当权威数据库。
-- 流水线采集由 `schedule` 和 `workflow_dispatch` 事件执行；两者均先恢复 ECS 状态、重筛、构建和清理发布，再采集并发布新内容。push 事件只清理发布，合并关键词 PR 不触发源站采集。
-- GitHub Pages 使用独立的 `pages.yml`，在 Hourly archive 结束后或手动触发时只读恢复 ECS 数据库、重筛和发布，不重复采集或写回 ECS。通过 `build --base-path` 适配项目站点前缀；默认构建仍使用根路径。只上传当次公开版本目录，设置与验证见运维说明。
-- 磁盘保留与备份：`remote.py` 在切换前滚动备份旧状态到 `state/archive.sqlite3.bak`，失败不得继续切站。发布和文章下架成功后才运行 `scripts/prune-deployments.sh`，保留最新 3 个数字编号版本并额外保护 `current`，清理本次上传及超过 24 小时的已知上传残留；不删除状态目录，不遍历软链接或无关文件。相关真实 shell 与模拟发布测试在 `tests/test_deployment_retention.py`。
+- 历史文章清理或发布：检查 `site.py`、`scripts/remote.py`、`archive.yml` 和 `pages.yml`。黑名单变更须先应用到恢复的服务器数据库并写回，再由 Pages 发布不含命中或过期文章的新站点。旧本地 HTML 通过数字帖子 ID 精确删除。源站访问失败不能阻止已完成的下架。不要把公开输出目录或 Actions 缓存当权威数据库。
+- 流水线采集由 `schedule` 和 `workflow_dispatch` 事件执行；两者均先恢复 ECS 状态、重筛、构建并执行 `remote.py save-state`，再采集、构建和保存状态。push 事件只清理并保存已有数据，合并关键词 PR 不触发源站采集。ECS 仅用于数据库持久化，不再自动上传网页、切换入口或清理旧网站。
+- 网页仅由独立的 `pages.yml` 发布到 GitHub Pages，在 Hourly archive 结束后（包括采集失败）或手动触发时只读恢复 ECS 数据库、重筛和发布，不重复采集或写回 ECS。通过 `build --base-path` 适配项目站点前缀；默认构建仍使用根路径。只上传当次公开版本目录，设置与验证见运维说明。
+- 数据库备份：`remote.py save-state` 在替换前滚动备份旧状态到 `state/archive.sqlite3.bak`，备份失败不得替换当前状态。保存成功后清理 `incoming/` 中超过 24 小时的已知数据库暂存文件，不删除状态目录，不遍历软链接或无关文件。`remote.py publish`、`purge-blocked.sh` 和 `prune-deployments.sh` 保留为旧 ECS 网站的手动工具，流水线不调用。相关真实 shell 与模拟保存测试在 `tests/test_deployment_retention.py`。
 
 ## 验证
 

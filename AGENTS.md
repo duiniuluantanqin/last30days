@@ -1,6 +1,6 @@
 # 项目维护说明
 
-本项目是 Python 论坛主帖采集器和 Jinja 静态阅读站，使用 SQLite 保存权威状态，通过 GitHub Actions 发布到 Ubuntu ECS，复用 Caddy。README 仅保留简介与构建；详细规则和部署步骤见仓库技能的 [内容规则](.agents/skills/forum-archive-maintainer/references/rules.md) 与 [运维说明](.agents/skills/forum-archive-maintainer/references/operations.md)。
+本项目是 Python 论坛主帖采集器和 Jinja 静态阅读站，通过 GitHub Actions 将网页仅发布到 GitHub Pages，ECS 中的 SQLite 保存权威状态。README 仅保留简介与构建；详细规则和部署步骤见仓库技能的 [内容规则](.agents/skills/forum-archive-maintainer/references/rules.md) 与 [运维说明](.agents/skills/forum-archive-maintainer/references/operations.md)。
 
 ## 工作方式
 
@@ -21,8 +21,8 @@
 - 图片展示规则在构建时处理，适用于已有归档；不覆写 SQLite 中的原始正文。修改规则时同步处理图片计数、提示和摘要。
 - 通过图片数量过滤后，“防水图”命中时隐藏全部图片，并移除正文及摘要中的这三个字；正文至少 200 个非空白字符且所有图片只出现在文末时，也隐藏全部图片。正文中间配图或图片后有文字时不应用后一规则。
 - 按原帖发布时间滚动保留 30 天。帖子 ID 和状态用于去重；不要用文件修改时间、抓取时间或最后回复时间代替发布时间。
-- 发布链路先恢复 ECS 状态、应用黑名单和保留规则并发布；定时和手动事件继续采集，push 事件只清理发布。命中或过期 ID 经私有清单删除历史版本的对应文章 HTML；清理范围不能扩大到其他网站或任意路径。
-- 替换服务器状态前滚动备份到 `state/archive.sqlite3.bak`。发布成功后保留最新 3 个版本并额外保护 `current`，删除本次上传文件和超过 24 小时的已知上传残留；不能清理 `state` 或跟随软链接删除外部内容。
+- 采集链路先恢复 ECS 状态、应用黑名单和保留规则并写回数据库；定时和手动事件继续采集并保存状态，push 事件只清理已有数据。任务结束后由独立 Pages 工作流只读恢复数据库、重筛并发布完整站点，当前站点不包含命中或过期文章。自动流程不得向 ECS 上传网页、切换 `current` 或清理旧网站。
+- 替换 ECS 数据库前滚动备份到 `state/archive.sqlite3.bak`，备份失败不得替换当前数据库。成功保存后清理 `incoming/` 中超过 24 小时的已知数据库暂存文件；不能清理 `state` 或跟随软链接删除外部内容。保留 ECS 数据库和 SSH Secrets，不将公开输出目录或 Actions 缓存当权威状态。
 - 关键词统一维护在 `blacklist/blacklist.txt`，已迁入原上游色情和广告分类的规则；无 Git 子模块或自动上游更新依赖。迁入词库的来源和许可证见 `blacklist/SOURCES.md`。
 
 ## 代码入口与验证
@@ -30,7 +30,7 @@
 - `forum_archive/source.py`：页面解析、主帖提取、HTML 清理。
 - `forum_archive/config.py`、`store.py`、`crawler.py`：规则加载、历史重筛、去重和采集。
 - `forum_archive/site.py`、`templates/`、`static/`：构建、图片展示、本地预览及 Block 菜单。
-- `scripts/remote.py`、`scripts/purge-blocked.sh`、`scripts/prune-deployments.sh`、`.github/workflows/`：发布、旧页面删除、版本和上传保留策略。
+- `scripts/remote.py`、`.github/workflows/`：ECS 数据库恢复、备份、写回与 GitHub Pages 发布。`remote.py publish` 及两个清理脚本保留为旧 ECS 网站的手动工具，流水线不调用。
 - 维护这些功能时参考项目技能：[forum-archive-maintainer](.agents/skills/forum-archive-maintainer/SKILL.md)。
 
 Windows 离线测试：`.venv/Scripts/python.exe -X utf8 -m unittest discover -s tests -v`。

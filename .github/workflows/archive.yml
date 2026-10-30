@@ -46,10 +46,10 @@ jobs:
           git push origin HEAD:"$GITHUB_REF_NAME"
       - name: Restore authoritative state from ECS
         run: python scripts/remote.py restore
-      - name: Apply blacklist and 30-day retention and publish
+      - name: Apply blacklist and 30-day retention and save database
         run: |
-          python -m forum_archive build --path-file .cache/release.txt
-          python scripts/remote.py publish
+          python -m forum_archive build
+          python scripts/remote.py save-state
       - name: Collect posts (partial failures are retried next time)
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         id: crawl
@@ -63,12 +63,12 @@ jobs:
           echo "result=$result" >> "$GITHUB_OUTPUT"
       - name: Generate release
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-        run: python -m forum_archive build --path-file .cache/release.txt
-      - name: Publish website and durable state
+        run: python -m forum_archive build
+      - name: Save collected database to ECS
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-        run: python scripts/remote.py publish
+        run: python scripts/remote.py save-state
       - name: Report partial collection failures
         if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && steps.crawl.outputs.result == '2'
         run: |
-          echo "::error::部分帖子采集失败；成功内容和重试状态已保存到 ECS，下一轮继续。"
+          echo "::error::部分帖子采集失败；成功内容和重试状态已保存到 ECS 数据库，GitHub Pages 将继续发布已有内容，下一轮继续采集。"
           exit 1

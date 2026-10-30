@@ -1,4 +1,4 @@
-"""Restore state and publish a static release over SSH. Never invoked by local crawl."""
+"""Restore/save SQLite state over SSH, with legacy full-site publishing kept for manual use."""
 
 import argparse
 from datetime import datetime
@@ -116,10 +116,27 @@ class Remote:
         self.execute(" && ".join(commands), check=True)
         print("网站与采集进度已发布，命中文章、旧版本和上传残留已按规则清理。")
 
+    def save_state(self, settings: Settings):
+        if not settings.database.is_file():
+            raise ValueError("采集状态不存在，拒绝保存")
+        root = self.root
+        staged = f"{root}/incoming/state-{time.time_ns()}.sqlite3"
+        self.execute(f"mkdir -p {root}/incoming {root}/state", check=True)
+        self.upload(settings.database, staged)
+        commands = [
+            f"if test -f {root}/state/archive.sqlite3; then "
+            f"cp {root}/state/archive.sqlite3 {staged}.backup.sqlite3 && "
+            f"mv -Tf {staged}.backup.sqlite3 {root}/state/archive.sqlite3.bak; fi",
+            f"mv -Tf {staged} {root}/state/archive.sqlite3",
+            f"find {root}/incoming -maxdepth 1 -type f -name 'state-[0-9]*.sqlite3' -mmin +1440 -delete",
+        ]
+        self.execute(" && ".join(commands), check=True)
+        print("已保存 ECS 数据库并滚动备份；网页由 GitHub Pages 发布。")
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["restore", "publish"])
+    parser.add_argument("command", choices=["restore", "save-state", "publish"])
     parser.add_argument("--config", default="config.toml")
     parser.add_argument("--release-file", default=".cache/release.txt")
     args = parser.parse_args()
@@ -127,6 +144,8 @@ def main():
     remote = Remote()
     if args.command == "restore":
         remote.restore(settings)
+    elif args.command == "save-state":
+        remote.save_state(settings)
     else:
         remote.publish(settings, Path(Path(args.release_file).read_text(encoding="utf-8").strip()))
 

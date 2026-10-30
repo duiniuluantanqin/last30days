@@ -233,6 +233,62 @@ class DeploymentRetentionTests(unittest.TestCase):
         self.assertEqual(list((self.deployment / "incoming").iterdir()), [])
         self.assertEqual((self.current / "index.html").read_text(), "new website")
 
+    def test_save_state_rotates_database_backup_without_publishing_website(self):
+        remote, settings, release, now = self.local_publisher()
+        with chdir(self.root), patch("scripts.remote.time.time_ns", return_value=200):
+            remote.save_state(settings)
+        backup_settings = replace(settings, database=self.deployment / "state/archive.sqlite3.bak")
+        current_settings = replace(settings, database=self.deployment / "state/archive.sqlite3")
+        with Store(backup_settings, now) as store:
+            self.assertEqual(store.get("test_revision"), "old")
+        with Store(current_settings, now) as store:
+            self.assertEqual(store.get("test_revision"), "new")
+        with Store(settings, now) as store:
+            store.set("test_revision", "next")
+        with chdir(self.root), patch("scripts.remote.time.time_ns", return_value=300):
+            remote.save_state(settings)
+        with Store(backup_settings, now) as store:
+            self.assertEqual(store.get("test_revision"), "new")
+        with Store(current_settings, now) as store:
+            self.assertEqual(store.get("test_revision"), "next")
+        self.assertEqual(sorted(path.name for path in (self.deployment / "state").iterdir()),
+                         ["archive.sqlite3", "archive.sqlite3.bak"])
+        self.assertEqual(list((self.deployment / "incoming").iterdir()), [])
+        self.assertEqual([path.name for path in (self.deployment / "releases").iterdir()], ["release-100"])
+        self.assertEqual((self.current / "index.html").read_text(), "release-100")
+
+    def test_save_state_backup_failure_keeps_existing_database(self):
+        remote, settings, release, now = self.local_publisher()
+        (self.deployment / "state/archive.sqlite3.bak").mkdir()
+        with chdir(self.root), patch("scripts.remote.time.time_ns", return_value=200):
+            with self.assertRaises(subprocess.CalledProcessError):
+                remote.save_state(settings)
+        with Store(replace(settings, database=self.deployment / "state/archive.sqlite3"), now) as store:
+            self.assertEqual(store.get("test_revision"), "old")
+        self.assertEqual((self.current / "index.html").read_text(), "release-100")
+
+    def test_save_state_only_cleans_old_database_uploads(self):
+        remote, settings, release, now = self.local_publisher()
+        incoming = self.deployment / "incoming"
+        for name in ("state-1.sqlite3", "state-2.backup.sqlite3", "state-3.sqlite3",
+                     "release-10.sqlite3", "unrelated.sqlite3"):
+            path = incoming / name
+            path.write_bytes(b"keep unless old state upload")
+            if name != "state-3.sqlite3":
+                old = time.time() - 25 * 3600
+                os.utime(path, (old, old))
+        with chdir(self.root), patch("scripts.remote.time.time_ns", return_value=200):
+            remote.save_state(settings)
+        self.assertEqual(sorted(path.name for path in incoming.iterdir()),
+                         ["release-10.sqlite3", "state-3.sqlite3", "unrelated.sqlite3"])
+        self.assertEqual((self.current / "index.html").read_text(), "release-100")
+
+    def test_save_state_rejects_missing_database(self):
+        remote, settings, release, now = self.local_publisher()
+        with chdir(self.root), self.assertRaises(ValueError):
+            remote.save_state(replace(settings, database=self.root / "missing.sqlite3"))
+        self.assertEqual(list((self.deployment / "incoming").iterdir()), [])
+
     def test_backup_failure_does_not_switch_current_or_replace_state(self):
         remote, settings, release, now = self.local_publisher()
         backup = self.deployment / "state/archive.sqlite3.bak"
