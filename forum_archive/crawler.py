@@ -143,6 +143,15 @@ def crawl(settings: Settings, *, retry_failed: bool = False, fetcher=None, now: 
                     stats[status] += 1
                     if status == "collected":
                         new_article_ids.append(thread["id"])
+                except httpx.HTTPStatusError as error:
+                    if error.response.status_code not in {404, 410}:
+                        store.fail(thread["id"], str(error))
+                        stats["errors"] += 1
+                        log.warning("帖子 %s 获取失败：%s", thread["id"], type(error).__name__)
+                    else:
+                        store.mark_gone(thread["id"], str(error))
+                        stats["skipped"] += 1
+                        log.info("帖子 %s 已被删除，跳过", thread["id"])
                 except (httpx.HTTPError, ParseError, RuntimeError, ValueError) as error:
                     store.fail(thread["id"], str(error))
                     stats["errors"] += 1

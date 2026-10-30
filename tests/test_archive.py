@@ -126,6 +126,13 @@ class ArchiveTests(unittest.TestCase):
             with Store(replace(settings, source=replace(settings.source, list_url=SOURCE.replace("fid=7", "fid=8") + "&search=today")), NOW):
                 pass
 
+    def test_deleted_post_is_skipped_without_error(self):
+        html = listing([("101", "已删除", NOW, NOW), ("102", "正常", NOW, NOW)])
+        stats, _ = self.run_crawl({"/thread0806.php?page=1": html, "/htm_data/2610/7/101.html": 404, "/htm_data/2610/7/102.html": post()})
+        self.assertEqual(stats["errors"], 0)
+        self.assertEqual(stats["skipped"], 1)
+        self.assertEqual(stats["collected"], 1)
+
     def test_today_crawl_skips_old_queue_and_checks_posted_time_and_sort_order(self):
         yesterday = NOW - timedelta(days=1)
         with Store(self.settings, yesterday) as store:

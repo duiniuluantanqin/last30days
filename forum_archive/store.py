@@ -106,6 +106,10 @@ class Store(AbstractContextManager):
                               post.image_count if status not in {"expired", "skipped"} else 0, status, thread_id))
         return status
 
+    def mark_gone(self, thread_id: str, error: str):
+        with self.db:
+            self.db.execute("UPDATE threads SET status='skipped',body_html=NULL,summary=NULL,image_count=0,last_error=? WHERE id=?", (error[:300], thread_id))
+
     def fail(self, thread_id: str, error: str):
         with self.db:
             self.db.execute("UPDATE threads SET attempts=attempts+1,last_error=? WHERE id=?", (error[:300], thread_id))
