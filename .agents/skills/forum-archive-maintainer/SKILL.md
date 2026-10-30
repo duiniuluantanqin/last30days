@@ -18,7 +18,7 @@ description: 维护本仓库的论坛采集、标题与正文黑名单、图片�
 - 图片数量：清理后的原始正文超过 20 个 `img` 标签时过滤整篇，20 张保留，重复 URL 仍按标签计数。规则在 `TitleFilter.blocks` 中统一用于采集与重筛，不使用展示层隐藏后的图片数或可能陈旧的数据库计数；测试覆盖 20/21 边界及历史页面清理。
 - 词库仅依赖本地 `blacklist/blacklist.txt`；原上游的色情和广告规则已迁入，来源和许可证见 `blacklist/SOURCES.md`，不要恢复子模块更新步骤。少数迁入规则刻意保留逗号以维持原匹配范围，不能无差别剥除所有词的标点。
 - 图片隐藏：检查 `site.py` 的构建处理和 `templates/post.html`、`index.html`。在文章通过数量过滤后仅改变公开展示，保持数据库原始归档可重建；同步更新剩余图片数量、图片提示和必要的摘要文字。具体条件见 `references/rules.md` 与当前测试。
-- 搜索和分页：检查 `site.py`、`templates/search.html`、`templates/pagination.html`、`static/browse.js` 和 `static/search.js`。搜索数据只在搜索页加载，包含公开文章的完整可见正文纯文本；不得包含已屏蔽或过期内容。下架时本地构建与远程 `purge-blocked.sh` 均使旧全文索引失效，保护当前索引。浏览器验证使用 `tests/browser_site_search.py` 的临时数据，检查全文、月份路径、搜索词保留、跳转边界及 CSP。
+- 搜索和分页：检查 `site.py`、`templates/search.html`、`templates/pagination.html`、`static/browse.js` 和 `static/search.js`。搜索数据只在搜索页加载，包含公开文章的完整可见正文纯文本；不得包含已屏蔽或过期内容。下架时本地构建与远程 `purge-blocked.sh` 均使旧全文索引失效，保护当前索引。浏览器验证使用 `tests/browser_site_search.py` 的临时数据，检查全文、月份路径、搜索词保留、滚动加载、无页码控件及 CSP。
 - 新文章标记：`crawler.py` 每次完成爬取将成功新增 ID 写入 SQLite meta 的 `new_article_ids`，零新增写空清单；`site.py` 为公开文章生成 `is_new`，同步列表、文章页及搜索数据。不可根据发布时间或最后一次成功更新时间推断，不得在单独构建时轮换批次；回归测试覆盖部分失败、零新增及列表错误。
 - Block：检查 `static/keyword-menu.js` 和 `templates/base.html`。单按钮打开 GitHub 新建文件页，预填独立的 `blacklist/block-*.txt` 和划词；用户提交后，`scripts/merge_blacklist.py` 在采集发布前去重合并到 `blacklist/blacklist.txt`，删除输入文件并由流水线提交回默认分支；目标仓库和分支由 `site.github_repository`、`site.github_branch` 配置。不创建 Issue 或 PR，不引入 OAuth 服务或浏览器令牌。普通 HTTP 须验证预填中文、emoji、特殊字符和独立文件名；不能依赖 Clipboard API 或 Web Crypto。
 - 历史文章清理或发布：检查 `site.py`、`scripts/remote.py`、`scripts/purge-blocked.sh` 和 `archive.yml`。黑名单变更须先应用到恢复的服务器数据库，再生成新站点和删除清单；旧 HTML 通过数字帖子 ID 精确删除。源站访问失败不能阻止已完成的下架。不要把公开输出目录或 Actions 缓存当权威数据库。

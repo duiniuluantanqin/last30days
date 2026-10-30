@@ -19,6 +19,7 @@
       {% for item in months %}<a class="month-link {% if month == item %}active{% endif %}" href="{{ base_path }}/archive/{{ item }}.html">{{ item[:4] }} 年 {{ item[5:] }} 月</a>{% endfor %}
       </div>{% endif %}
       <div class="sidebar-note"><span class="small-dot" aria-hidden="true"></span>{{ site.subtitle }}<br><a href="{{ source_url }}" target="_blank" rel="noopener noreferrer nofollow">查看来源版块</a></div>
+      <button class="back-to-top" type="button" hidden><span aria-hidden="true">↑</span> 回顶部</button>
     </aside>
     <div class="main-column">
       <header class="topbar"><a href="{{ base_path }}/">讨论归档</a><div class="topbar-actions">

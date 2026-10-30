@@ -73,25 +73,19 @@ class SiteSearchTests(unittest.TestCase):
         self.assertFalse((first / "assets/search-index.js").exists())
         self.assertTrue((second / "assets/search-index.js").is_file())
 
-    def test_numbered_pagination_and_jump_preserve_listing_and_month_routes(self):
+    def test_infinite_scroll_preserves_routes_without_page_controls(self):
         for number in range(25):
             self.save(str(100 + number), f"标题{number}", "<p>普通正文</p>")
         release = build(self.settings, now=NOW)
-        for filename, first, pattern in (("page-7.html", "/", "/page-__PAGE__.html"),
-                                         ("archive/2026-10-7.html", "/archive/2026-10.html", "/archive/2026-10-__PAGE__.html")):
+        for filename, next_page in (("page-7.html", "/page-8.html"),
+                                    ("archive/2026-10-7.html", "/archive/2026-10-8.html")):
             page = BeautifulSoup((release / filename).read_text(encoding="utf-8"), "html.parser")
-            pagination = page.select_one(".pagination")
-            self.assertEqual(pagination["data-first-page"], first)
-            self.assertEqual(pagination["data-page-pattern"], pattern)
-            self.assertEqual(pagination.select_one('[aria-current="page"]').get_text(), "7")
-            self.assertEqual([node.get_text() for node in pagination.select(".page-number")], ["1", "5", "6", "7", "8", "9", "13"])
-            jump = pagination.select_one('.page-jump input[name="page"]')
-            self.assertEqual(jump["min"], "1")
-            self.assertEqual(jump["max"], "13")
-            self.assertEqual(jump["value"], "7")
+            self.assertFalse(page.select(".pagination, .page-count, .page-jump, .page-number"))
+            self.assertEqual(page.select_one(".feed-loader")["data-next-page"], next_page)
             self.assertEqual(len(page.select(".article-row")), 2)
         last = BeautifulSoup((release / "page-13.html").read_text(encoding="utf-8"), "html.parser")
         self.assertEqual(len(last.select(".article-row")), 1)
+        self.assertEqual(last.select_one(".feed-loader")["data-next-page"], "")
 
     def test_search_is_available_on_lists_and_posts_without_block_configuration(self):
         self.settings.site = replace(self.settings.site, github_repository="")
@@ -102,6 +96,7 @@ class SiteSearchTests(unittest.TestCase):
             self.assertIsNotNone(page.select_one('.site-search input[name="q"]'))
             self.assertIsNotNone(page.select_one('script[src="/assets/browse.js"]'))
             self.assertIsNone(page.select_one("#keyword-menu"))
+            self.assertFalse(page.select(".pagination, .page-count, .page-jump, .page-number"))
         search = BeautifulSoup((release / "search.html").read_text(encoding="utf-8"), "html.parser")
         self.assertIsNotNone(search.select_one('script[src^="/assets/search-index.js?"]'))
         self.assertIsNotNone(search.select_one('script[src="/assets/search.js"]'))
@@ -113,8 +108,8 @@ class SiteSearchTests(unittest.TestCase):
         self.assertEqual(self.index(release)["articles"], [])
         self.assertTrue((release / "search.html").is_file())
         page = BeautifulSoup((release / "index.html").read_text(encoding="utf-8"), "html.parser")
-        self.assertEqual(page.select_one('[aria-current="page"]').get_text(), "1")
-        self.assertEqual(page.select_one('.page-jump input')["max"], "1")
+        self.assertFalse(page.select(".pagination, .page-count, .page-jump, .page-number"))
+        self.assertEqual(page.select_one(".feed-loader")["data-next-page"], "")
 
     def test_pages_prefix_covers_navigation_assets_and_pagination(self):
         for number in range(3):
@@ -130,11 +125,10 @@ class SiteSearchTests(unittest.TestCase):
                         self.assertTrue(url.startswith("/last30days/"), (filename, url))
                         self.assertTrue((release / url.removeprefix("/last30days/").split("?")[0]).exists())
             self.assertEqual(page.select_one(".site-search")["action"], "/last30days/search.html")
-        for filename, first, pattern in (("page-2.html", "/last30days/", "/last30days/page-__PAGE__.html"),
-                                         ("archive/2026-10-2.html", "/last30days/archive/2026-10.html", "/last30days/archive/2026-10-__PAGE__.html")):
+        for filename, next_page in (("index.html", "/last30days/page-2.html"),
+                                    ("archive/2026-10.html", "/last30days/archive/2026-10-2.html")):
             page = BeautifulSoup((release / filename).read_text(encoding="utf-8"), "html.parser")
-            self.assertEqual(page.select_one(".pagination")["data-first-page"], first)
-            self.assertEqual(page.select_one(".pagination")["data-page-pattern"], pattern)
+            self.assertEqual(page.select_one(".feed-loader")["data-next-page"], next_page)
         post = (release / "posts/101.html").read_text(encoding="utf-8")
         self.assertIn('src="https://cdn.example/original.jpg"', post)
         self.assertFalse(list(release.rglob("*.sqlite3")))

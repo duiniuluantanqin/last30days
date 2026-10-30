@@ -6,7 +6,7 @@ archive.example.com {
     header {
         X-Content-Type-Options nosniff
         Referrer-Policy no-referrer
-        Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; img-src https: http:; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
+        Content-Security-Policy "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'self'; img-src https: http:; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
     }
     file_server
     handle_errors {

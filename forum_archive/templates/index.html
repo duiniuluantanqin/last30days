@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{% if month %}{{ month }} 归档{% else %}全部讨论{% endif %} · {{ site.title }}{% endblock %}
 {% block content %}
-<section class="page-heading"><div><p class="eyebrow">{% if month %}月份归档{% else %}阅读清单{% endif %}</p><h1>{% if month %}{{ month[:4] }} 年 {{ month[5:] }} 月{% else %}最近的讨论<span class="heading-dot">。</span>{% endif %}</h1></div><p class="page-count">第 {{ page }} / {{ pages }} 页</p></section>
+<section class="page-heading"><div><p class="eyebrow">{% if month %}月份归档{% else %}阅读清单{% endif %}</p><h1>{% if month %}{{ month[:4] }} 年 {{ month[5:] }} 月{% else %}最近的讨论<span class="heading-dot">。</span>{% endif %}</h1></div></section>
 {% if articles %}
 <div class="article-list">
 {% for article in articles %}

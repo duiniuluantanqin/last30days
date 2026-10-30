@@ -105,18 +105,12 @@ def build(settings: Settings, *, now: datetime | None = None, base_path: str = "
                 filename = "index.html" if page == 1 else f"page-{page}.html"
                 link = lambda number: f"{base_path}/" if number == 1 else f"{base_path}/page-{number}.html"
             write(filename, "index.html", articles=items[(page - 1) * size:page * size],
-                  month=month, page=page, pages=pages,
-                  page_numbers=sorted({1, pages, *range(max(1, page - 2), min(pages, page + 2) + 1)}),
-                  page_url=link, first_page=link(1), page_pattern=link("__PAGE__"),
-                  previous=link(page - 1) if page > 1 else None,
-                  next_page=link(page + 1) if page < pages else None)
+                  month=month, next_page=link(page + 1) if page < pages else None)
 
     listing(articles)
     for month in months:
         listing(groups[month], month=month)
-    write("search.html", "search.html", month=None, search_page=True, page=1, pages=1, page_numbers=[1],
-          page_url=lambda number: f"{base_path}/search.html?page={number}", first_page=f"{base_path}/search.html",
-          page_pattern=f"{base_path}/search.html?page=__PAGE__", previous=None, next_page=None)
+    write("search.html", "search.html", month=None, next_page=None)
     for article in articles:
         write(f"posts/{article['id']}.html", "post.html", article=article, month=article["published_at"][:7])
     write("404.html", "404.html", month=None)
@@ -167,7 +161,7 @@ class ArchiveHandler(SimpleHTTPRequestHandler):
     def end_headers(self):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
-        self.send_header("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; img-src https: http:; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")
+        self.send_header("Content-Security-Policy", "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'self'; img-src https: http:; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")
         super().end_headers()
 
 
