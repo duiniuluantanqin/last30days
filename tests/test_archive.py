@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 from bs4 import BeautifulSoup
 import httpx
 
+from forum_archive.__main__ import main
 from forum_archive.config import Settings, TitleFilter
 from forum_archive.crawler import Fetcher, crawl
 from forum_archive.site import build, current_release
@@ -689,6 +690,50 @@ class ArchiveTests(unittest.TestCase):
         routes["/htm_data/2610/7/101.html"] = post()
         second, _ = self.run_crawl(routes)
         self.assertEqual(second["collected"], 1)
+
+    def test_missing_posts_are_skipped_without_blocking_collection_or_retrying(self):
+        self.settings.source = replace(self.settings.source, list_url=SOURCE + "&search=today")
+        routes = {"/thread0806.php?page=1": listing([("103", "失效帖子", NOW, NOW), ("102", "已删除帖子", NOW, NOW),
+                                                    ("101", "正常讨论", NOW, NOW)]),
+                  "/htm_data/2610/7/103.html": 404, "/htm_data/2610/7/102.html": 410,
+                  "/htm_data/2610/7/101.html": post()}
+        stats, requested = self.run_crawl(routes)
+        self.assertEqual([url.rsplit("/", 1)[-1] for url in requested if url.endswith(".html")],
+                         ["103.html", "102.html", "101.html"])
+        self.assertEqual(stats["errors"], 0)
+        self.assertEqual(stats["skipped"], 2)
+        self.assertEqual(stats["collected"], 1)
+        with Store(self.settings, NOW) as store:
+            for thread_id, code in (("103", 404), ("102", 410)):
+                row = store.db.execute("SELECT * FROM threads WHERE id=?", (thread_id,)).fetchone()
+                self.assertEqual(row["status"], "skipped")
+                self.assertIn(str(code), row["last_error"])
+                self.assertIsNone(row["body_html"])
+            self.assertEqual(store.get("last_success_at"), NOW.isoformat())
+            self.assertEqual(json.loads(store.get("new_article_ids")), ["101"])
+        release = build(self.settings, now=NOW)
+        self.assertTrue((release / "posts/101.html").is_file())
+        for thread_id in ("102", "103"):
+            self.assertFalse((release / f"posts/{thread_id}.html").exists())
+        for retry_failed in (False, True):
+            client, requested = self.fetcher(routes)
+            with patch("forum_archive.crawler.time.sleep"):
+                stats = crawl(self.settings, fetcher=client, now=NOW, retry_failed=retry_failed)
+            self.assertEqual(stats["errors"], 0)
+            self.assertFalse(any(url.endswith(".html") for url in requested))
+
+    def test_missing_post_does_not_fail_crawl_command(self):
+        self.settings.source = replace(self.settings.source, list_url=SOURCE + "&search=today")
+        routes = {"/thread0806.php?page=1": listing([("102", "失效帖子", NOW, NOW), ("101", "正常讨论", NOW, NOW)]),
+                  "/htm_data/2610/7/102.html": 404, "/htm_data/2610/7/101.html": post()}
+        client, _ = self.fetcher(routes)
+        with patch("forum_archive.__main__.Settings.load", return_value=self.settings), \
+             patch("forum_archive.crawler.Fetcher", return_value=client), \
+             patch("forum_archive.crawler.datetime", wraps=datetime) as clock, \
+             patch("forum_archive.crawler.time.sleep"), patch("forum_archive.__main__.logging.basicConfig"), \
+             patch("builtins.print"):
+            clock.now.return_value = NOW
+            self.assertEqual(main(["crawl"]), 0)
 
     def test_full_detail_title_is_filtered_again(self):
         routes = {"/thread0806.php?page=1": listing([("101", "截断标题", NOW, NOW)]),

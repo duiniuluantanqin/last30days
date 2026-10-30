@@ -33,3 +33,12 @@ python3 -m venv .venv
 ```
 
 Linux 使用 `.venv/bin/python -m forum_archive build`。详细内容规则、采集命令、测试和部署说明见 [项目维护 skill](.agents/skills/forum-archive-maintainer/SKILL.md)。
+
+## 手动触发
+
+手动触发采集、重筛和发布，可以使用：
+```bash
+/usr/local/bin/dispatch-forum-archive.sh >> /var/log/forum-archive-dispatch.log 2>&1
+echo "退出码：$?"
+tail -n 50 /var/log/forum-archive-dispatch.log
+```
