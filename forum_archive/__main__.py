@@ -62,6 +62,7 @@ def parser():
         if name == "serve":
             command.add_argument("--host", default="127.0.0.1")
             command.add_argument("--port", type=int, default=8000)
+            command.add_argument("--reload", action="store_true", help="保存代码、模板、静态资源或配置后自动重建并刷新浏览器")
     return result
 
 
@@ -92,7 +93,11 @@ def main(argv=None):
                 Path(args.path_file).write_text(str(release.resolve()), encoding="utf-8")
             print(f"网站已生成：{release}")
         elif args.command == "serve":
-            serve(settings, args.host, args.port)
+            if args.reload:
+                from .preview import serve_reload
+                serve_reload(Path(args.config).resolve(), args.host, args.port, demo=args.demo)
+            else:
+                serve(settings, args.host, args.port)
         elif args.command == "status":
             with Store(settings, datetime.now(ZoneInfo(settings.source.timezone))) as store:
                 status = {"counts": store.counts(), "retention_cutoff": store.cutoff.isoformat(),

@@ -12,7 +12,7 @@ Windows：
 python -m venv .venv
 .venv/Scripts/python.exe -m pip install -e .
 .venv/Scripts/python.exe -m forum_archive demo
-.venv/Scripts/python.exe -m forum_archive serve --demo --port 8765
+.venv/Scripts/python.exe -m forum_archive serve --demo --reload --port 8765
 ```
 
 Linux：
@@ -21,10 +21,10 @@ Linux：
 python3 -m venv .venv
 .venv/bin/python -m pip install -e .
 .venv/bin/python -m forum_archive demo
-.venv/bin/python -m forum_archive serve --demo --port 8765
+.venv/bin/python -m forum_archive serve --demo --reload --port 8765
 ```
 
-打开 <http://127.0.0.1:8765>。演示模式使用独立数据，不访问源站。
+打开 <http://127.0.0.1:8765>。演示模式使用独立数据，不访问源站。`--reload` 会在保存 Python、模板、CSS/JS、配置或词库后自动重建、重启预览并刷新浏览器；启动时也会重新构建，缺少演示数据时自动生成。若端口已被占用，先在旧预览终端按 Ctrl+C 停止，再启动新命令。
 
 配置入口为 `config.toml`。已有真实采集数据时，重新构建网站：
 

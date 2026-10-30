@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import re
 import shutil
+import socket
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -159,16 +160,26 @@ class ArchiveHandler(SimpleHTTPRequestHandler):
         return None
 
     def end_headers(self):
+        self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Content-Security-Policy", "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'self'; img-src https: http:; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")
         super().end_headers()
 
 
-def serve(settings: Settings, host: str, port: int):
+class ArchiveServer(ThreadingHTTPServer):
+    allow_reuse_address = not hasattr(socket, "SO_EXCLUSIVEADDRUSE")
+
+    def server_bind(self):
+        if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+
+def serve(settings: Settings, host: str, port: int, *, handler_class=ArchiveHandler):
     current_release(settings.output)
-    handler = partial(ArchiveHandler, output=settings.output)
-    with ThreadingHTTPServer((host, port), handler) as server:
+    handler = partial(handler_class, output=settings.output)
+    with ArchiveServer((host, port), handler) as server:
         print(f"本地预览：http://{host}:{port}（Ctrl+C 停止）", flush=True)
         try:
             server.serve_forever()

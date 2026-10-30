@@ -33,10 +33,12 @@ python -m venv .venv
 
 ```powershell
 .venv/Scripts/python.exe -m forum_archive crawl --max-posts 3 --recent-pages 1
-.venv/Scripts/python.exe -m forum_archive serve --port 8766
+.venv/Scripts/python.exe -m forum_archive serve --reload --port 8766
 ```
 
-打开 <http://127.0.0.1:8766>。预览服务只监听本机；另开终端继续采集后，刷新网页即可看到新的版本。不必重启服务。
+打开 <http://127.0.0.1:8766>。预览服务只监听本机。`--reload` 会在启动时重建已有数据，保存 Python、模板、CSS/JS、配置或词库后自动重建并重启子进程，浏览器随后自动刷新；另开终端采集并生成新版本后也会自动刷新。预览响应禁止缓存，开发刷新脚本仅由预览服务插入，不写入发布文件。监听不扫描生成目录或 Python 缓存，避免反复触发构建。
+
+一个端口只能运行一个预览服务，包括 Windows；端口占用时启动命令报错，不再让新旧实例同时响应。将已有预览切换到 `--reload` 时，先在旧终端按 Ctrl+C 停止，再运行新命令；之后修改代码无需手动重启。不加 `--reload` 时仍只提供现有静态版本，不监视源码变化。
 
 继续按配置采集今日主帖、查看进度：
 
@@ -49,7 +51,7 @@ python -m venv .venv
 
 ```powershell
 .venv/Scripts/python.exe -m forum_archive demo
-.venv/Scripts/python.exe -m forum_archive serve --demo --port 8765
+.venv/Scripts/python.exe -m forum_archive serve --demo --reload --port 8765
 ```
 
 ## Linux
@@ -58,7 +60,7 @@ python -m venv .venv
 python3 -m venv .venv
 .venv/bin/python -m pip install -e .
 .venv/bin/python -m forum_archive crawl --max-posts 3 --recent-pages 1
-.venv/bin/python -m forum_archive serve --port 8766
+.venv/bin/python -m forum_archive serve --reload --port 8766
 ```
 
 ## 文件与数据
@@ -95,6 +97,8 @@ SQLite 包含结构化正文与状态，是权威归档，需要备份。公开�
 可选浏览器检查需要在执行该命令的 Python 环境中安装 Playwright 和可用的 Chromium/Chrome。先启动演示预览，再运行 `.venv/Scripts/python.exe -X utf8 tests/browser_keyword_menu.py --url http://127.0.0.1:8765/`。检查实际鼠标划词、GitHub 新建文件链接、预填内容、独立文件名、重复词、长度限制和手机弹窗位置，不向 GitHub 提交任何内容。测试不使用系统剪贴板。
 
 `.venv/Scripts/python.exe -X utf8 tests/browser_site_search.py` 使用临时数据库和随机本地端口，自动验证标题/全文搜索、连续滚动加载、月份范围、加载失败重试、页码控件移除、HTML 转义、手机布局及现有 CSP。该命令需在同时装有本项目依赖和 Playwright 的 Python 环境中运行，不访问源站或提交 GitHub 内容。
+
+`.venv/Scripts/python.exe -X utf8 tests/browser_preview.py` 在临时目录复制应用，验证配置、CSS、JavaScript、模板、Python 响应头和词库修改后浏览器自动刷新，不改动工作区源码或真实数据库。
 
 追加 `--http-origin` 可将本地页面映射到普通 HTTP 测试来源，验证 Chrome 中 `isSecureContext=false` 时的 `Block` 菜单、新建文件链接及预填功能；同时校验中文、emoji 和特殊字符。
 

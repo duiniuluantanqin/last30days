@@ -12,6 +12,7 @@ description: 维护本仓库的论坛采集、标题与正文黑名单、图片�
 
 ## 选择修改位置
 
+- 本地预览：检查 `preview.py`、`site.py` 和 `__main__.py`。开发使用 `serve --reload`，保存源码、模板、静态资源、配置或词库后自动重建并刷新浏览器；保留不带参数的静态预览。监听端口必须独占，开发刷新脚本不得写入发布产物。相关验证在 `tests/test_preview.py` 和 `tests/browser_preview.py`。
 - 页面结构或原图链接：检查 `forum_archive/source.py` 的 `parse_post`、`clean_content`，以及 `tests/test_archive.py` 的主帖/回复和图片请求测试。采集器不能请求图片。
 - 今日采集：列表入口使用 `search=today`，分页保留该参数，只抓北京时间当天的待采主帖，详情页再次核对楼主发布时间；不恢复历史补采。分页游标跨日重置，旧补采 meta 不参与运行。优先读取楼主 `.tipad` 结构化时间，兼容 `Posted: MM-DD HH:MM 樓主`，不能使用回复时间；保留跨年测试。迁移同版块普通列表 URL 时保留既有 SQLite 归档，仍按发布时间倒序与 30 天规则展示。
 - 黑名单：检查 `config.py` 的 `TitleFilter`、`crawler.py` 的采集复查和 `store.py` 的 `apply_filter`。新帖与已有帖必须使用同一套标题和全文规则，正文不能只用 180 字摘要代替。保留规范化、跨标签与 HTML 实体处理。
