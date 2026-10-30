@@ -1,11 +1,9 @@
-# 网页提交的黑名单关键词
+# 黑名单关键词
 
-网页划词后点击 `Block`，会复制所选关键词并打开 GitHub 中 `blacklist/keywords.txt` 的编辑页。在文件末尾另起一行粘贴并保存，保留已有内容，不为每个词创建独立文件；若自动复制失败，按弹窗提示手动复制。
+统一词库为 `blacklist.txt`，每行一个关键词，匹配标题和完整正文；任一命中就屏蔽整篇。不要添加分类标题或注释行，它们也会成为关键词。
 
-使用有仓库编辑权限的 GitHub 账号，允许时直接提交到 `master`；分支保护要求审核时按 GitHub 提示操作。网站不创建 Issue 或 PR，不需要令牌或后端服务，配置方法见 [skill 内容规则](../.agents/skills/forum-archive-maintainer/references/rules.md) 的“网页划词编辑黑名单”。
+网页划词点击 `Block`，会打开 GitHub 新建文件页，预填独立的 `block-时间戳-随机标识.txt` 和关键词。检查后提交即可，不需要编辑统一词库。
 
-本地关键词集中维护在 `keywords.txt`，原 `config.toml` 的 `filter.blocked_keywords` 与旧 Block 哈希文件中的词已迁入，重复词按匹配时的规范化规则去重。该文件也包含补充的色情、招嫖引流和广告话术，使用每行一个关键词的格式；不要添加分类标题或注释行，这些内容也会被当作关键词。
+文件进入默认分支后，Hourly archive 自动运行 `scripts/merge_blacklist.py`，将本目录其他 `.txt` 去重合并到 `blacklist.txt`，删除已合并文件并提交结果，再清理和发布网站。原有 `keywords.txt` 已迁入统一词库。按现有规范化规则去重，保留首次写法与标点；不读取子目录，所有输入读取成功后才写入或删除。
 
-变更进入 `master` 后，流水线会应用本地词库并重新筛选已经收录的文章，删除服务器上的命中文章页面。加载器仍兼容读取其他 `.txt` 文件及配置中的 `filter.blocked_keywords`，但新增本地词统一追加到 `keywords.txt`。空行忽略，本说明文件不会作为关键词读取。
-
-所有词均匹配标题和全文的包含关系，不分析语境。原有“奶”“学生”等宽泛词也已保留；若误屏蔽正常文章，应在本文件中调整对应词，同时留意上游词库是否也包含该规则。
+流水线需要 `contents: write` 并允许机器人向默认分支提交。不创建 Issue 或自动 PR，浏览器不保存令牌。详细操作见 [内容规则](../.agents/skills/forum-archive-maintainer/references/rules.md#网页划词提交黑名单)。

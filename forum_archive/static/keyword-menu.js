@@ -7,13 +7,11 @@
 
   const submit = menu.querySelector(".keyword-submit");
   const keywords = JSON.parse(menu.dataset.keywords);
-  let selectedText = "";
   let selectionRect = null;
 
   const normalize = value => value.normalize("NFKC").toLowerCase().replace(/[\s\p{Cf}]/gu, "");
 
   function hide() {
-    selectedText = "";
     menu.hidden = true;
     submit.hidden = true;
     submit.removeAttribute("href");
@@ -49,42 +47,16 @@
     }
 
     selectionRect = range.getBoundingClientRect();
-    selectedText = text;
-    submit.href = `https://github.com/${menu.dataset.repository}/edit/${encodeURIComponent(menu.dataset.branch)}/blacklist/keywords.txt`;
+    const parameters = new URLSearchParams({
+      filename: `blacklist/block-${Date.now()}-${Math.random().toString(36).slice(2, 10)}.txt`,
+      value: `${text}\n`,
+      message: "Add blocked keyword"
+    });
+    submit.href = `https://github.com/${menu.dataset.repository}/new/${encodeURIComponent(menu.dataset.branch)}?${parameters}`;
     submit.hidden = false;
     menu.hidden = false;
     position();
   }
-
-  submit.addEventListener("click", event => {
-    const text = selectedText;
-    if (!text) {
-      event.preventDefault();
-      return;
-    }
-    // Synchronous copy also works on public HTTP, before opening the edit page.
-    const input = document.createElement("textarea");
-    input.value = text;
-    input.readOnly = true;
-    input.style.position = "fixed";
-    input.style.top = "0";
-    input.style.left = "0";
-    input.style.opacity = "0";
-    document.body.append(input);
-    input.focus({preventScroll: true});
-    input.select();
-    let copied = false;
-    try {
-      copied = document.execCommand("copy");
-    } catch {
-      copied = false;
-    } finally {
-      input.remove();
-    }
-    if (!copied) {
-      window.prompt("请复制下方关键词，并在 GitHub 文件末尾另起一行粘贴保存。", text);
-    }
-  });
 
   // Keep the selection while clicking the floating action.
   menu.addEventListener("pointerdown", event => {

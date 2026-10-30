@@ -16,7 +16,7 @@ max_attempts = 3
 [filter]
 # Keywords and patterns match titles and full body text, not HTML attributes.
 # Customize them for your own inclusion criteria. Images are NOT classified.
-# Local keywords: blacklist/keywords.txt (one keyword per line).
+# Local keywords: blacklist/blacklist.txt (one keyword per line).
 blocked_patterns = ['\[\d+v\]']
 
 [site]
@@ -24,7 +24,7 @@ title = "拾页"
 subtitle = "技术讨论 · 每小时更新"
 description = "把值得阅读的讨论，留在这里。"
 page_size = 20
-# Block copies the selection and opens this branch's blacklist file on GitHub.
+# Block opens a prefilled keyword file on this branch; Actions merges it.
 github_repository = "duiniuluantanqin/last30days"
 github_branch = "master"
 

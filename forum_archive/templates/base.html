@@ -37,7 +37,7 @@
   {% if site.github_repository %}
   <div id="keyword-menu" class="keyword-menu" role="group" aria-label="加入标题和正文黑名单" hidden
        data-repository="{{ site.github_repository }}" data-branch="{{ site.github_branch }}" data-keywords='{{ keyword_rules|tojson }}'>
-    <a class="keyword-submit" title="复制关键词并打开黑名单文件，在末尾另起一行粘贴保存" target="_blank" rel="noopener noreferrer" hidden>Block</a>
+    <a class="keyword-submit" title="打开 GitHub 新建关键词文件，确认提交后自动合并词库" target="_blank" rel="noopener noreferrer" hidden>Block</a>
   </div>
   <script src="{{ base_path }}/assets/keyword-menu.js" defer></script>
   {% endif %}

@@ -65,7 +65,7 @@ python3 -m venv .venv
 
 ```text
 config.toml                      来源、黑名单与运行预算
-blacklist/keywords.txt            通过 Block 复制后集中追加的黑名单关键词
+blacklist/blacklist.txt            合并后的统一黑名单关键词
 blacklist/SOURCES.md             迁入词库的来源、版本及修改说明
 blacklist/licenses/              迁入词库的许可证与版权声明
 forum_archive/                   采集、状态、渲染与本地预览
@@ -92,11 +92,11 @@ SQLite 包含结构化正文与状态，是权威归档，需要备份。公开�
 
 覆盖标题和全文规则、20/21 张图片边界与历史页面下架、正文命中后的持续屏蔽、真实页面结构的时间戳、来源版块限制、主帖与回复分离、正文清理、懒加载原图链接、零图片请求、去重、失败重试、今日分页与跨日重置、楼主 Posted 时间及跨年解析、同版块状态迁移、robots 限速和重新筛选后的旧页面下线。
 
-可选浏览器检查需要在执行该命令的 Python 环境中安装 Playwright 和可用的 Chromium/Chrome。先启动演示预览，再运行 `.venv/Scripts/python.exe -X utf8 tests/browser_keyword_menu.py --url http://127.0.0.1:8765/`。检查实际鼠标划词、GitHub 文件编辑链接、剪贴板复制、失败提示、重复词、长度限制和手机弹窗位置，不向 GitHub 提交任何内容。测试会覆盖系统剪贴板。
+可选浏览器检查需要在执行该命令的 Python 环境中安装 Playwright 和可用的 Chromium/Chrome。先启动演示预览，再运行 `.venv/Scripts/python.exe -X utf8 tests/browser_keyword_menu.py --url http://127.0.0.1:8765/`。检查实际鼠标划词、GitHub 新建文件链接、预填内容、独立文件名、重复词、长度限制和手机弹窗位置，不向 GitHub 提交任何内容。测试不使用系统剪贴板。
 
 `.venv/Scripts/python.exe -X utf8 tests/browser_site_search.py` 使用临时数据库和随机本地端口，自动验证标题/全文搜索、跨页搜索结果、月份分页、页码跳转、输入边界、HTML 转义、手机布局及现有 CSP。该命令需在同时装有本项目依赖和 Playwright 的 Python 环境中运行，不访问源站或提交 GitHub 内容。
 
-追加 `--http-origin` 可将本地页面映射到普通 HTTP 测试来源，验证 Chrome 中 `isSecureContext=false` 时的 `Block` 菜单、文件编辑链接及复制功能；同时校验中文、emoji 和特殊字符。
+追加 `--http-origin` 可将本地页面映射到普通 HTTP 测试来源，验证 Chrome 中 `isSecureContext=false` 时的 `Block` 菜单、新建文件链接及预填功能；同时校验中文、emoji 和特殊字符。
 
 ## GitHub Actions 与 ECS（本地测试不会执行部署）
 
