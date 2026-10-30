@@ -61,7 +61,7 @@ jobs:
             exit "$result"
           fi
           echo "result=$result" >> "$GITHUB_OUTPUT"
-      - name: Generate release
+      - name: Reapply rules and build locally (no ECS website upload)
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: python -m forum_archive build
       - name: Save collected database to ECS

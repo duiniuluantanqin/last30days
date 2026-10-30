@@ -154,7 +154,7 @@ def crawl(settings: Settings, *, retry_failed: bool = False, fetcher=None, now: 
                     log.warning("帖子 %s 获取失败：%s", thread["id"], type(error).__name__)
             store.set("new_article_ids", json.dumps(new_article_ids))
             store.set("last_scan_at", now.isoformat())
-            if not stats["errors"]:
+            if not stats["errors"] or stats["collected"]:
                 store.set("last_success_at", now.isoformat())
             store.set("crawl_in_progress", "")
             stats["totals"] = store.counts()

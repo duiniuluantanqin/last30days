@@ -380,6 +380,48 @@ class ArchiveTests(unittest.TestCase):
         self.run_crawl(routes)
         self.assertEqual(self.new_ids(build(self.settings, now=NOW)), {"102"})
 
+    def test_partial_crawl_refreshes_update_time_when_articles_are_collected(self):
+        routes = {"/thread0806.php?page=1": listing([("101", "正常讨论", NOW, NOW), ("102", "失败文章", NOW, NOW)]),
+                  "/htm_data/2610/7/101.html": post(), "/htm_data/2610/7/102.html": 503}
+        stats, _ = self.run_crawl(routes)
+        self.assertEqual(stats["collected"], 1)
+        self.assertEqual(stats["errors"], 1)
+        with Store(self.settings, NOW) as store:
+            self.assertEqual(store.get("last_success_at"), NOW.isoformat())
+        release = build(self.settings, now=NOW + timedelta(minutes=5))
+        for filename in ("index.html", "archive/2026-10.html", "posts/101.html", "search.html"):
+            page = BeautifulSoup((release / filename).read_text(encoding="utf-8"), "html.parser")
+            self.assertEqual(page.select_one(".update-time").get_text(), "更新于 10-29 12:00")
+
+    def test_crawl_without_successful_articles_keeps_previous_update_time_on_errors(self):
+        previous = NOW - timedelta(hours=1)
+        with Store(self.settings, NOW) as store:
+            store.set("last_success_at", previous.isoformat())
+        routes = {"/thread0806.php?page=1": listing([("101", "失败文章", NOW, NOW), ("102", "普通讨论", NOW, NOW)]),
+                  "/htm_data/2610/7/101.html": 503, "/htm_data/2610/7/102.html": post(body="<p>短正文</p>")}
+        stats, _ = self.run_crawl(routes)
+        self.assertEqual(stats["collected"], 0)
+        self.assertEqual(stats["blocked"], 1)
+        self.assertEqual(stats["errors"], 1)
+        with Store(self.settings, NOW) as store:
+            self.assertEqual(store.get("last_success_at"), previous.isoformat())
+            self.assertEqual(store.get("last_scan_at"), NOW.isoformat())
+        page = BeautifulSoup((build(self.settings, now=NOW) / "index.html").read_text(encoding="utf-8"), "html.parser")
+        self.assertEqual(page.select_one(".update-time").get_text(), "更新于 10-29 11:00")
+
+    def test_error_free_crawl_without_new_articles_still_refreshes_update_time(self):
+        routes = {"/thread0806.php?page=1": listing([("101", "正常讨论", NOW, NOW)]),
+                  "/htm_data/2610/7/101.html": post()}
+        self.run_crawl(routes)
+        later = NOW + timedelta(hours=1)
+        client, _ = self.fetcher(routes)
+        with patch("forum_archive.crawler.time.sleep"):
+            stats = crawl(self.settings, fetcher=client, now=later)
+        self.assertEqual(stats["collected"], 0)
+        self.assertEqual(stats["errors"], 0)
+        with Store(self.settings, later) as store:
+            self.assertEqual(store.get("last_success_at"), later.isoformat())
+
     def test_fatal_listing_failure_keeps_last_completed_new_batch(self):
         self.run_crawl({"/thread0806.php?page=1": listing([("101", "正常讨论", NOW, NOW)]),
                         "/htm_data/2610/7/101.html": post()})
