@@ -54,12 +54,18 @@ def build(settings: Settings, *, now: datetime | None = None, base_path: str = "
         if clean_display_text(content):
             article["body_html"] = str(content)
             article["summary"] = " ".join(content.get_text(" ", strip=True).split())[:180]
+        edit_note = re.search(r"此[貼帖]由[^\r\n]+?重新[編编][輯辑][：:]\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}\s*$", content.get_text())
+        # Ignore terminal forum edit metadata, including text split across tags.
+        ignored_suffix = len(edit_note[0]) if edit_note else 0
         trailing_images = []
         for node in reversed(list(content.descendants)):
             if node.name == "img":
                 trailing_images.append(node)
-            elif type(node) is NavigableString and node.strip():
-                break
+            elif type(node) is NavigableString:
+                text = node[:max(0, len(node) - ignored_suffix)]
+                ignored_suffix = max(0, ignored_suffix - len(node))
+                if text.strip():
+                    break
         if trailing_images:
             for image in trailing_images:
                 image.decompose()

@@ -672,6 +672,7 @@ class ArchiveTests(unittest.TestCase):
     def test_build_hides_trailing_images_and_keeps_inline_images_in_existing_posts(self):
         image = '<a href="https://cdn.example/original.jpg"><img src="https://cdn.example/original.jpg"></a>'
         inline_image = image.replace("original.jpg", "inline.jpg")
+        edit_note = '<span>此貼由测试用户重新編輯：2026-10-31 00:54</span>\n<br><br><div></div>'
         cases = [
             ("<p>" + "文" * 200 + "</p>" + image, 0),
             ("<p>" + "文" * 200 + "</p><div>" + (image + "<br> \n") * 5 + "</div>", 0),
@@ -684,6 +685,11 @@ class ArchiveTests(unittest.TestCase):
             ("<p>" + "文" * 100 + "</p>" + inline_image + "<p>" + "文" * 100 + "</p>" + image, 1),
             ("<p>" + "文" * 100 + "</p>" + image * 20 + "<div><br> &nbsp;</div>", 0),
             ("<p>" + "文" * 100 + "</p><div>" + inline_image + "<p>图片说明</p><span>" + image * 2 + "</span></div>", 1),
+            ("<p>" + "文" * 100 + "</p>" + image * 2 + "<p>图片说明</p>" + image * 2 + edit_note, 2),
+            ("<p>" + "文" * 100 + "</p>" + image + edit_note.replace("测试用户", "<b>测试用户</b>"), 0),
+            ("<p>" + "文" * 100 + "</p>" + image * 2 + edit_note.replace("此貼", "此帖").replace("編輯：", "编辑:"), 0),
+            ("<p>" + "文" * 100 + "</p>" + image * 2 + "<p>正文结语</p>" + edit_note, 2),
+            ("<p>" + "文" * 100 + "</p>" + image + edit_note + "<p>后续正文</p>", 1),
         ]
         with Store(self.settings, NOW) as store:
             for index, (body, _) in enumerate(cases, 301):
