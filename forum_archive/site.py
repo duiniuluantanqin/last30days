@@ -54,18 +54,17 @@ def build(settings: Settings, *, now: datetime | None = None, base_path: str = "
         if clean_display_text(content):
             article["body_html"] = str(content)
             article["summary"] = " ".join(content.get_text(" ", strip=True).split())[:180]
-        if sum(not char.isspace() for char in content.get_text()) >= 200:
-            trailing_images = []
-            for node in reversed(list(content.descendants)):
-                if node.name == "img":
-                    trailing_images.append(node)
-                elif type(node) is NavigableString and node.strip():
-                    break
-            if trailing_images and len(trailing_images) == len(content.select("img")):
-                for image in trailing_images:
-                    image.decompose()
-                article["body_html"] = str(content)
-                article["image_count"] = 0
+        trailing_images = []
+        for node in reversed(list(content.descendants)):
+            if node.name == "img":
+                trailing_images.append(node)
+            elif type(node) is NavigableString and node.strip():
+                break
+        if trailing_images:
+            for image in trailing_images:
+                image.decompose()
+            article["body_html"] = str(content)
+            article["image_count"] = len(content.select("img"))
         search_articles.append({**{key: article[key] for key in ("id", "title", "summary", "published_at", "image_count", "is_new")},
                                 "text": content.get_text(" ", strip=True)})
         groups[article["published_at"][:7]].append(article)

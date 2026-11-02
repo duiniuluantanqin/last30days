@@ -629,7 +629,7 @@ class ArchiveTests(unittest.TestCase):
     def test_build_keeps_images_for_posts_without_marker(self):
         with Store(self.settings, NOW) as store:
             store.discover(Thread("201", SOURCE, "正常讨论", NOW.isoformat()), NOW)
-            body = '<p>普通正文</p>' * 25 + '<img src="https://cdn.example/original.jpg">'
+            body = '<p>普通正文</p>' * 25 + '<img src="https://cdn.example/original.jpg"><p>图片说明</p>'
             store.save_post("201", Post("正常讨论", NOW.isoformat(), body, "普通正文", 1), NOW, False)
         release = build(self.settings, now=NOW)
         page = BeautifulSoup((release / "posts/201.html").read_text(encoding="utf-8"), "html.parser")
@@ -646,7 +646,7 @@ class ArchiveTests(unittest.TestCase):
             ("<p>" + "保留正文" * 25 + "</p><div>赞（ 0 ）</div>", "保留正文" * 25, 0),
             ("<p>" + "文" * 100 + "正文提到赞(88)，仍需保留。</p>", "文" * 100 + "正文提到赞(88)，仍需保留。", 0),
             ("<p>" + "文" * 200 + "</p>" + image + "<div>赞(88)</div>", "文" * 200, 0),
-            ("<p>" + "保留正文" * 25 + "</p>" + image + "<div>赞(88)</div>", "保留正文" * 25, 1),
+            ("<p>" + "保留正文" * 25 + "</p>" + image + "<div>赞(88)</div>", "保留正文" * 25, 0),
         ]
         with Store(self.settings, NOW) as store:
             for index, (body, _, _) in enumerate(cases, 401):
@@ -669,18 +669,21 @@ class ArchiveTests(unittest.TestCase):
             for article in store.articles():
                 self.assertEqual(article["body_html"], cases[int(article["id"]) - 401][0])
 
-    def test_long_articles_hide_images_only_when_all_images_are_at_the_end(self):
+    def test_build_hides_trailing_images_and_keeps_inline_images_in_existing_posts(self):
         image = '<a href="https://cdn.example/original.jpg"><img src="https://cdn.example/original.jpg"></a>'
+        inline_image = image.replace("original.jpg", "inline.jpg")
         cases = [
             ("<p>" + "文" * 200 + "</p>" + image, 0),
             ("<p>" + "文" * 200 + "</p><div>" + (image + "<br> \n") * 5 + "</div>", 0),
-            ("<p>" + "文" * 199 + "</p>" + image, 1),
-            ("<p>" + "文 " * 199 + "</p>" + image, 1),
+            ("<p>" + "文" * 199 + "</p>" + image, 0),
+            ("<p>" + "文 " * 199 + "</p>" + image, 0),
             ("<p>" + "文" * 200 + "</p>" + image * 6, 0),
             ("<p>" + "文" * 200 + "</p>" + image * 2 + "<p>图片说明</p>", 2),
-            (image + "<p>" + "文" * 200 + "</p>" + image * 2, 3),
+            (inline_image + "<p>" + "文" * 200 + "</p>" + image * 2, 1),
             ("<p>" + "文" * 200 + "</p>", 0),
-            ("<p>" + "文" * 100 + "</p>" + image + "<p>" + "文" * 100 + "</p>" + image, 2),
+            ("<p>" + "文" * 100 + "</p>" + inline_image + "<p>" + "文" * 100 + "</p>" + image, 1),
+            ("<p>" + "文" * 100 + "</p>" + image * 20 + "<div><br> &nbsp;</div>", 0),
+            ("<p>" + "文" * 100 + "</p><div>" + inline_image + "<p>图片说明</p><span>" + image * 2 + "</span></div>", 1),
         ]
         with Store(self.settings, NOW) as store:
             for index, (body, _) in enumerate(cases, 301):
@@ -689,6 +692,8 @@ class ArchiveTests(unittest.TestCase):
                 store.save_post(thread_id, Post("正常讨论", NOW.isoformat(), body, "正文摘要", body.count("<img")), NOW, False)
         release = build(self.settings, now=NOW)
         listing = BeautifulSoup((release / "index.html").read_text(encoding="utf-8"), "html.parser")
+        data = json.loads((release / "assets/search-index.js").read_text(encoding="utf-8")
+                          .removeprefix("window.archiveSearchIndex = ").removesuffix(";\n"))
         for index, (body, remaining) in enumerate(cases, 301):
             with self.subTest(thread_id=index):
                 page = BeautifulSoup((release / f"posts/{index}.html").read_text(encoding="utf-8"), "html.parser")
@@ -699,6 +704,10 @@ class ArchiveTests(unittest.TestCase):
                 self.assertEqual("张外链图片" in row.get_text(), bool(remaining))
                 if remaining:
                     self.assertIn(f"{remaining} 张外链图片", row.get_text())
+                if inline_image in body:
+                    self.assertEqual(page.select_one(".prose img")["src"], "https://cdn.example/inline.jpg")
+                entry = next(article for article in data["articles"] if article["id"] == str(index))
+                self.assertEqual(entry["image_count"], remaining)
         with Store(self.settings, NOW) as store:
             for article in store.articles():
                 body, _ = cases[int(article["id"]) - 301]
@@ -708,7 +717,7 @@ class ArchiveTests(unittest.TestCase):
     def test_end_to_end_no_image_requests_and_idempotent_replay(self):
         html = listing([("101", "正常讨论", NOW, NOW), ("102", "色情帖子", NOW, NOW), ("103", "旧帖", NOW - timedelta(days=40), NOW)])
         routes = {"/thread0806.php?page=1": html,
-                  "/htm_data/2610/7/101.html": post(body='<p>正常正文</p>' * 25 + '<img ess-data="https://cdn.example/original.jpg">')}
+                  "/htm_data/2610/7/101.html": post(body='<p>正常正文</p>' * 25 + '<img ess-data="https://cdn.example/original.jpg"><p>图片说明</p>')}
         first, requested = self.run_crawl(routes)
         self.assertEqual(first["collected"], 1)
         self.assertEqual(first["totals"], {"blocked": 1, "collected": 1, "expired": 1})

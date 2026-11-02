@@ -113,7 +113,7 @@ class SiteSearchTests(unittest.TestCase):
 
     def test_pages_prefix_covers_navigation_assets_and_pagination(self):
         for number in range(3):
-            self.save(str(101 + number), f"标题{number}", '<p>普通正文</p>' * 25 + '<img src="https://cdn.example/original.jpg">')
+            self.save(str(101 + number), f"标题{number}", '<p>普通正文</p>' * 25 + '<img src="https://cdn.example/original.jpg"><p>图片说明</p>')
         release = build(self.settings, now=NOW, base_path="/last30days")
         for filename in ("index.html", "page-2.html", "archive/2026-10.html", "posts/101.html", "search.html", "404.html"):
             page = BeautifulSoup((release / filename).read_text(encoding="utf-8"), "html.parser")
