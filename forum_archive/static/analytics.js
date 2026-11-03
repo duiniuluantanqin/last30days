@@ -35,7 +35,11 @@
       if (!response.ok) return;
       const {today, total} = await response.json();
       if (!counter || ![today.uv, today.pv, total.uv, total.pv].every(value => Number.isSafeInteger(value) && value >= 0)) return;
-      counter.textContent = `今日 UV ${today.uv} · PV ${today.pv} ｜ 累计 UV ${total.uv} · PV ${total.pv}`;
+      for (const [period, counts] of Object.entries({today, total})) {
+        for (const metric of ["uv", "pv"]) {
+          counter.querySelector(`[data-count="${period}-${metric}"]`).textContent = counts[metric];
+        }
+      }
       counter.hidden = false;
     } catch {
       // Reading and navigation remain available while the counter is offline.

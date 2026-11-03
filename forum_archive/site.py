@@ -80,7 +80,7 @@ def build(settings: Settings, *, now: datetime | None = None, base_path: str = "
                                                    ensure_ascii=False, separators=(",", ":")) + ";\n", encoding="utf-8")
     months = sorted(groups, reverse=True)
     common = dict(site=settings.site, total=len(articles), months=months, last_success=last_success,
-                  source_url=settings.source.list_url, generated_at=now.isoformat(), keyword_rules=settings.filters.keywords,
+                  generated_at=now.isoformat(), keyword_rules=settings.filters.keywords,
                   asset_version=release.name, base_path=base_path)
 
     def write(path, template, **context):

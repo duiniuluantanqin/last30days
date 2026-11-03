@@ -546,7 +546,7 @@ class ArchiveTests(unittest.TestCase):
         self.assertEqual(menu["data-branch"], "feature/rules")
         self.assertEqual(json.loads(menu["data-keywords"]), self.settings.filters.keywords)
         scripts = page.select("script")
-        self.assertEqual([script["src"] for script in scripts], ["/assets/browse.js", "/assets/keyword-menu.js"])
+        self.assertEqual([script["src"] for script in scripts], ["/assets/appearance.js", "/assets/browse.js", "/assets/keyword-menu.js"])
         self.assertTrue((release / "assets/keyword-menu.js").is_file())
         self.assertTrue(all(not script.get_text(strip=True) for script in scripts))
 
@@ -572,7 +572,7 @@ class ArchiveTests(unittest.TestCase):
         release = build(self.settings, now=NOW)
         page = BeautifulSoup((release / "index.html").read_text(encoding="utf-8"), "html.parser")
         self.assertIsNone(page.select_one("#keyword-menu"))
-        self.assertEqual([script["src"] for script in page.select("script")], ["/assets/browse.js"])
+        self.assertEqual([script["src"] for script in page.select("script")], ["/assets/appearance.js", "/assets/browse.js"])
 
     def test_real_layout_timestamp_and_forum_scope(self):
         html = listing([("123", "正常讨论", NOW, NOW)], 5)

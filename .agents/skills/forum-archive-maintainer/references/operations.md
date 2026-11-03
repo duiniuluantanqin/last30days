@@ -102,6 +102,8 @@ SQLite 包含结构化正文与状态，是权威归档，需要备份。公开�
 
 `.venv/Scripts/python.exe -X utf8 tests/browser_site_search.py` 使用临时数据库和随机本地端口，自动验证标题/全文搜索、连续滚动加载、月份范围、加载失败重试、页码控件移除、文章在新选项卡打开且保留原列表、短距离滚动后的回顶部、HTML 转义、手机布局及现有 CSP。该命令需在同时装有本项目依赖和 Playwright 的 Python 环境中运行，不访问源站或提交 GitHub 内容。
 
+`.venv/Scripts/python.exe -X utf8 tests/browser_appearance.py` 使用临时归档验证四种浅色皮肤、深色模式、跨页面/刷新保留选择、系统默认色调、禁用存储、键盘切换，以及北京时间每小时 `:32` 倒计时的小时和午夜边界；追加 `--http-origin` 验证普通 HTTP。截图写入 `.cache/screenshots/appearance-*.png`。本地演示也可以查看外观和倒计时，UV/PV 仍不在演示模式上报。
+
 `.venv/Scripts/python.exe -X utf8 tests/browser_preview.py` 在临时目录复制应用，验证配置、CSS、JavaScript、模板、Python 响应头和词库修改后浏览器自动刷新，不改动工作区源码或真实数据库。
 
 追加 `--http-origin` 可将本地页面映射到普通 HTTP 测试来源，验证 Chrome 中 `isSecureContext=false` 时的 `Block` 菜单、新建文件链接及预填功能；同时校验中文、emoji 和特殊字符。
@@ -170,7 +172,7 @@ Pages 工作流只读取 ECS 的 `state/archive.sqlite3` 快照，使用当前 `
 
 ## 自建 UV/PV 统计（可选）
 
-GitHub Pages 无法运行写库服务。项目自己的 `assets/analytics.js` 在页面打开、刷新或从浏览器后退缓存恢复时，向 ECS 的 `/api/analytics` 发送一个随机浏览器标识；接口写入 `state/analytics.sqlite3` 并返回计数，页脚显示今日和累计 UV/PV。无需 Umami、第三方统计 SDK、外部统计平台或新增 Python 依赖。
+GitHub Pages 无法运行写库服务。项目自己的 `assets/analytics.js` 在页面打开、刷新或从浏览器后退缓存恢复时，向 ECS 的 `/api/analytics` 发送一个随机浏览器标识；接口写入 `state/analytics.sqlite3` 并返回计数，左侧固定侧栏显示今日和累计 UV/PV，手机端显示在页面上方。无需 Umami、第三方统计 SDK、外部统计平台或新增 Python 依赖。
 
 PV 每打开一个完整页面加一，滚动预加载的 HTML、读取计数、修改搜索参数和接口预检不增加 PV。今日按北京时间划分；今日 UV 按当日不同浏览器标识去重，累计 UV 按全部历史不同标识去重，不能把每日 UV 相加。标识保存在站点的 localStorage 中，跨标签页复用；清理存储、更换浏览器或设备会成为新访客。浏览器禁用存储时仅计 PV。统计不会回填启用前的历史访问。
 
@@ -207,7 +209,7 @@ PV 每打开一个完整页面加一，滚动预加载的 HTML、读取计数、
      -H 'Origin: https://duiniuluantanqin.github.io'
    ```
 
-   然后推送配置并通过现有 Pages 工作流发布，打开网站检查页脚。首次访问应为 UV/PV 各 1，同一浏览器刷新只增加 PV。接口离线时隐藏计数，阅读、搜索和导航继续工作。若用户另设 CSP，需在 `connect-src` 中加入统计接口来源；本地预览会按配置自动加入。
+   然后推送配置并通过现有 Pages 工作流发布，打开网站检查侧栏统计。首次访问应为 UV/PV 各 1，同一浏览器刷新只增加 PV。接口离线时隐藏计数，阅读、搜索和导航继续工作。若用户另设 CSP，需在 `connect-src` 中加入统计接口来源；本地预览会按配置自动加入。
 
 默认 ECS 目录（使用自定义 `DEPLOY_ROOT` 时随之变化）：
 

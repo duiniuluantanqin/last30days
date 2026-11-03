@@ -79,13 +79,24 @@ def main():
 
             def check(uv, pv):
                 assert counters.counts()["total"] == {"uv": uv, "pv": pv}, counters.counts()
-                assert f"累计 UV {uv} · PV {pv}" in page.locator("[data-analytics-counts]").inner_text()
+                assert page.locator('.sidebar [data-count="total-uv"]').inner_text() == str(uv)
+                assert page.locator('.sidebar [data-count="total-pv"]').inner_text() == str(pv)
 
             page.goto(site_url + "/", wait_until="networkidle")
             if args.http_origin:
                 assert not page.evaluate("isSecureContext")
             page.locator("[data-analytics-counts]").wait_for(state="visible")
+            assert page.locator("footer [data-analytics-counts]").count() == 0
             check(1, 1)
+            screenshots = root / ".cache/screenshots"
+            screenshots.mkdir(parents=True, exist_ok=True)
+            page.screenshot(path=str(screenshots / "analytics-sidebar.png"))
+            page.set_viewport_size({"width": 1280, "height": 650})
+            page.evaluate("window.scrollTo({top: 250, behavior: 'instant'})")
+            page.wait_for_function("scrollY > 0")
+            box = page.locator("[data-analytics-counts]").bounding_box()
+            assert 0 <= box["y"] and box["y"] + box["height"] <= 650
+            assert page.locator("[data-analytics-counts]").evaluate("node => !node.closest('footer')")
             visitor = page.evaluate("localStorage.getItem('forum-archive-visitor')")
             page.reload(wait_until="networkidle")
             check(1, 2)
@@ -119,6 +130,8 @@ def main():
             page.set_viewport_size({"width": 390, "height": 844})
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
             assert page.locator("[data-analytics-counts]").is_visible()
+            assert page.locator("[data-analytics-counts]").bounding_box()["y"] < 844
+            page.screenshot(path=str(screenshots / "analytics-mobile.png"))
             # Fail the optional endpoint while continuing to serve articles.
             context.route(endpoint, lambda route: route.abort())
             page.reload(wait_until="networkidle")
