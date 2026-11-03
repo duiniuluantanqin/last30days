@@ -96,6 +96,9 @@ def main():
             page.wait_for_function("scrollY > 0")
             box = page.locator("[data-analytics-counts]").bounding_box()
             assert 0 <= box["y"] and box["y"] + box["height"] <= 650
+            note = page.locator(".sidebar-note").bounding_box()
+            assert box["y"] >= note["y"] + note["height"]
+            assert page.locator(".sidebar-tools > :last-child").get_attribute("data-analytics-counts") is not None
             assert page.locator("[data-analytics-counts]").evaluate("node => !node.closest('footer')")
             visitor = page.evaluate("localStorage.getItem('forum-archive-visitor')")
             page.reload(wait_until="networkidle")

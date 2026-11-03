@@ -68,7 +68,7 @@ class TitleFilter:
 @dataclass
 class Site:
     title: str = "拾页"
-    subtitle: str = "技术讨论 · 每小时更新"
+    subtitle: str = "每小时更新"
     description: str = "把值得阅读的讨论，留在这里。"
     page_size: int = 20
     github_repository: str = ""

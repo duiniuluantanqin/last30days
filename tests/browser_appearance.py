@@ -89,6 +89,19 @@ def main():
             assert page.get_by_text("查看来源版块", exact=True).count() == 0
             countdown = page.locator("[data-update-countdown]")
             assert countdown.is_visible()
+            def check_layout():
+                assert page.locator(".topbar .appearance-controls").count() == 1
+                controls = page.locator(".appearance-controls").bounding_box()
+                topbar = page.locator(".topbar").bounding_box()
+                assert abs(controls["x"] + controls["width"] - topbar["x"] - topbar["width"]) < 2
+                assert topbar["y"] <= controls["y"] < topbar["y"] + topbar["height"]
+                label = page.locator(".update-label").bounding_box()
+                timer = countdown.bounding_box()
+                assert abs(label["y"] - timer["y"]) < 3, (label, timer)
+                assert timer["x"] >= label["x"] + label["width"]
+                assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+            check_layout()
             assert countdown.locator("time").inner_text() == "00:10"
             assert "北京时间 12:32" in countdown.get_attribute("title")
             page.clock.fast_forward(10000)
@@ -132,7 +145,7 @@ def main():
             assert root_node.get_attribute("data-skin") == "sage"
             assert page.locator("#search-results .article-row").count() > 0
             page.set_viewport_size({"width": 390, "height": 844})
-            assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+            check_layout()
             assert countdown.is_visible()
             assert page.get_by_role("button", name="深色", exact=True).is_visible()
             page.screenshot(path=str(screenshot_dir / "appearance-mobile.png"))
@@ -144,6 +157,9 @@ def main():
             page.get_by_role("button", name="杏纸", exact=True).focus()
             page.keyboard.press("Space")
             assert root_node.get_attribute("data-skin") == "sand"
+            for width in (320, 768, 1024):
+                page.set_viewport_size({"width": width, "height": 844})
+                check_layout()
             assert not errors, errors
 
             blocked = browser.new_context(color_scheme="light")

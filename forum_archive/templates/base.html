@@ -20,27 +20,13 @@
       {% for item in months %}<a class="month-link {% if month == item %}active{% endif %}" href="{{ base_path }}/archive/{{ item }}.html">{{ item[:4] }} 年 {{ item[5:] }} 月</a>{% endfor %}
       </div>{% endif %}
       <div class="sidebar-tools">
+        <div class="sidebar-note"><span class="update-label"><span class="small-dot" aria-hidden="true"></span>{{ site.subtitle }}</span><span class="update-countdown" data-update-countdown hidden>下次计划更新 <time>--:--</time></span></div>
         {% if site.analytics_endpoint %}
         <section class="site-analytics" data-analytics-counts aria-label="全站访问统计" hidden>
-          <div class="analytics-period"><span>今日</span><span>UV <b data-count="today-uv">—</b></span><span>PV <b data-count="today-pv">—</b></span></div>
-          <div class="analytics-period"><span>累计</span><span>UV <b data-count="total-uv">—</b></span><span>PV <b data-count="total-pv">—</b></span></div>
+          <div class="analytics-period">今日 UV <span data-count="today-uv">—</span> · PV <span data-count="today-pv">—</span></div>
+          <div class="analytics-period">累计 UV <span data-count="total-uv">—</span> · PV <span data-count="total-pv">—</span></div>
         </section>
         {% endif %}
-        <div class="appearance-controls" hidden>
-          <div class="appearance-heading"><span class="nav-label">阅读外观</span>
-            <div class="mode-options" role="group" aria-label="页面色调">
-              <button type="button" data-mode-choice="light" aria-pressed="true">浅色</button>
-              <button type="button" data-mode-choice="dark" aria-pressed="false">深色</button>
-            </div>
-          </div>
-          <div class="skin-options" role="group" aria-label="浅色皮肤">
-            <button type="button" data-skin-choice="lilac" aria-pressed="true"><span class="skin-swatch" aria-hidden="true"></span>雾紫</button>
-            <button type="button" data-skin-choice="sage" aria-pressed="false"><span class="skin-swatch" aria-hidden="true"></span>青瓷</button>
-            <button type="button" data-skin-choice="sky" aria-pressed="false"><span class="skin-swatch" aria-hidden="true"></span>晴空</button>
-            <button type="button" data-skin-choice="sand" aria-pressed="false"><span class="skin-swatch" aria-hidden="true"></span>杏纸</button>
-          </div>
-        </div>
-        <div class="sidebar-note"><span class="small-dot" aria-hidden="true"></span>{{ site.subtitle }}<span class="update-countdown" data-update-countdown hidden>下次计划更新 <time>--:--</time></span></div>
       </div>
     </aside>
     <div class="main-column">
@@ -50,6 +36,18 @@
           <input id="search-query" type="search" name="q" placeholder="搜索标题或正文" aria-label="搜索标题或正文关键词">
           <button type="submit">搜索</button>
         </form>
+        <div class="appearance-controls" hidden>
+          <div class="mode-options" role="group" aria-label="页面色调">
+            <button type="button" data-mode-choice="light" aria-pressed="true">浅色</button>
+            <button type="button" data-mode-choice="dark" aria-pressed="false">深色</button>
+          </div>
+          <div class="skin-options" role="group" aria-label="浅色皮肤">
+            <button type="button" data-skin-choice="lilac" aria-pressed="true"><span class="skin-swatch" aria-hidden="true"></span>雾紫</button>
+            <button type="button" data-skin-choice="sage" aria-pressed="false"><span class="skin-swatch" aria-hidden="true"></span>青瓷</button>
+            <button type="button" data-skin-choice="sky" aria-pressed="false"><span class="skin-swatch" aria-hidden="true"></span>晴空</button>
+            <button type="button" data-skin-choice="sand" aria-pressed="false"><span class="skin-swatch" aria-hidden="true"></span>杏纸</button>
+          </div>
+        </div>
       </div></header>
       <main id="main">{% block content %}{% endblock %}</main>
       <footer><span>{{ site.title }} · 个人讨论归档</span><span>按标题和正文规则收录 · 图片使用原链接</span></footer>

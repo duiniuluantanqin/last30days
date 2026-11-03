@@ -102,7 +102,7 @@ SQLite 包含结构化正文与状态，是权威归档，需要备份。公开�
 
 `.venv/Scripts/python.exe -X utf8 tests/browser_site_search.py` 使用临时数据库和随机本地端口，自动验证标题/全文搜索、连续滚动加载、月份范围、加载失败重试、页码控件移除、文章在新选项卡打开且保留原列表、短距离滚动后的回顶部、HTML 转义、手机布局及现有 CSP。该命令需在同时装有本项目依赖和 Playwright 的 Python 环境中运行，不访问源站或提交 GitHub 内容。
 
-`.venv/Scripts/python.exe -X utf8 tests/browser_appearance.py` 使用临时归档验证四种浅色皮肤、深色模式、跨页面/刷新保留选择、系统默认色调、禁用存储、键盘切换，以及北京时间每小时 `:32` 倒计时的小时和午夜边界；追加 `--http-origin` 验证普通 HTTP。截图写入 `.cache/screenshots/appearance-*.png`。本地演示也可以查看外观和倒计时，UV/PV 仍不在演示模式上报。
+`.venv/Scripts/python.exe -X utf8 tests/browser_appearance.py` 使用临时归档验证右上角外观按钮、四种浅色皮肤、深色模式、跨页面/刷新保留选择、系统默认色调、禁用存储、键盘切换，以及北京时间每小时 `:32` 倒计时的小时和午夜边界，检查倒计时同行和桌面、平板、手机布局；追加 `--http-origin` 验证普通 HTTP。截图写入 `.cache/screenshots/appearance-*.png`。本地演示也可以查看外观和倒计时，UV/PV 仍不在演示模式上报。
 
 `.venv/Scripts/python.exe -X utf8 tests/browser_preview.py` 在临时目录复制应用，验证配置、CSS、JavaScript、模板、Python 响应头和词库修改后浏览器自动刷新，不改动工作区源码或真实数据库。
 

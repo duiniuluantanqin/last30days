@@ -109,7 +109,7 @@ def main():
             search_box = page.locator(".site-search").bounding_box()
             topbar = page.locator(".topbar").bounding_box()
             assert search_box["width"] <= 240 and search_box["height"] <= 40
-            assert abs(search_box["x"] + search_box["width"] - topbar["x"] - topbar["width"]) < 2
+            assert topbar["x"] <= search_box["x"] and search_box["x"] + search_box["width"] <= topbar["x"] + topbar["width"]
             assert topbar["y"] <= search_box["y"] < topbar["y"] + topbar["height"]
             no_page_controls()
             assert page.locator(".back-to-top").is_hidden()
