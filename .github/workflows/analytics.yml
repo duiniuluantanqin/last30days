@@ -1,0 +1,59 @@
+name: Deploy analytics to ECS
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/analytics.yml'
+      - 'forum_archive/*.py'
+      - 'pyproject.toml'
+      - 'config.toml'
+      - 'scripts/remote.py'
+      - 'scripts/deploy-analytics.sh'
+      - 'deploy/analytics.service.example'
+      - 'tests/test_analytics*.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: forum-archive-analytics-deploy
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: python -m pip install -e .
+      - name: Test analytics and deployment rollback
+        run: python -m unittest discover -s tests -p 'test_analytics*.py' -v
+      - name: Upload code and deploy persistent analytics service
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_ROOT: ${{ vars.DEPLOY_ROOT || '/var/www/html/last30days' }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+        run: python scripts/remote.py deploy-analytics
+      - name: Check public HTTPS endpoint and CORS without counting a visit
+        run: |
+          python - <<'PY'
+          import httpx
+          from forum_archive.config import Settings
+          site = Settings.load().site
+          response = httpx.get(site.analytics_endpoint, headers={"Origin": site.analytics_origin}, timeout=20)
+          response.raise_for_status()
+          assert response.headers.get("access-control-allow-origin") == site.analytics_origin, "Incorrect analytics CORS origin"
+          counts = response.json()
+          assert all(type(counts[period][metric]) is int and counts[period][metric] >= 0
+                     for period in ("today", "total") for metric in ("uv", "pv")), "Invalid analytics response"
+          print("Public analytics HTTPS/CORS check passed")
+          PY

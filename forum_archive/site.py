@@ -8,6 +8,7 @@ import re
 import shutil
 import socket
 from uuid import uuid4
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
 from bs4 import BeautifulSoup, NavigableString
@@ -133,8 +134,9 @@ def current_release(output: Path) -> Path:
 
 
 class ArchiveHandler(SimpleHTTPRequestHandler):
-    def __init__(self, *args, output: Path, **kwargs):
+    def __init__(self, *args, output: Path, analytics_endpoint: str = "", **kwargs):
         self.output = output
+        self.analytics_endpoint = analytics_endpoint
         super().__init__(*args, directory=str(current_release(output)), **kwargs)
 
     def do_GET(self):
@@ -153,7 +155,11 @@ class ArchiveHandler(SimpleHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
-        self.send_header("Content-Security-Policy", "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'self'; img-src https: http:; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")
+        connect_src = "'self'"
+        if self.analytics_endpoint:
+            endpoint = urlsplit(self.analytics_endpoint)
+            connect_src += f" {endpoint.scheme}://{endpoint.netloc}"
+        self.send_header("Content-Security-Policy", f"default-src 'none'; script-src 'self'; connect-src {connect_src}; style-src 'self'; img-src https: http:; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")
         super().end_headers()
 
 
@@ -168,7 +174,7 @@ class ArchiveServer(ThreadingHTTPServer):
 
 def serve(settings: Settings, host: str, port: int, *, handler_class=ArchiveHandler):
     current_release(settings.output)
-    handler = partial(handler_class, output=settings.output)
+    handler = partial(handler_class, output=settings.output, analytics_endpoint=settings.site.analytics_endpoint)
     with ArchiveServer((host, port), handler) as server:
         print(f"本地预览：http://{host}:{port}（Ctrl+C 停止）", flush=True)
         try:

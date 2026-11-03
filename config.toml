@@ -27,6 +27,9 @@ page_size = 20
 # Block opens a prefilled keyword file on this branch; Actions merges it.
 github_repository = "duiniuluantanqin/last30days"
 github_branch = "master"
+# Self-hosted ECS endpoint; empty disables tracking. See the operations guide.
+analytics_endpoint = "https://stats.last30days.cn/api/analytics"
+analytics_origin = "https://duiniuluantanqin.github.io"
 
 [storage]
 database = "data/archive.sqlite3"

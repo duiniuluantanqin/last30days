@@ -15,3 +15,4 @@
 @media(hover:hover){.back-to-top:hover{background:var(--accent);border-color:var(--accent);color:var(--white);box-shadow:0 8px 26px #49355e2e;transform:translateY(-2px)}}
 @media(max-width:560px){.back-to-top{right:max(18px,env(safe-area-inset-right));bottom:max(18px,env(safe-area-inset-bottom));width:58px;height:64px;border-radius:16px}}
 @media(prefers-reduced-motion:reduce){.back-to-top{transition:none}}
+footer{flex-wrap:wrap}[data-analytics-counts]{flex-basis:100%;font-variant-numeric:tabular-nums}

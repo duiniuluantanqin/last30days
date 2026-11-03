@@ -29,7 +29,7 @@
         </form>
       </div></header>
       <main id="main">{% block content %}{% endblock %}</main>
-      <footer><span>{{ site.title }} · 个人讨论归档</span><span>按标题和正文规则收录 · 图片使用原链接</span></footer>
+      <footer><span>{{ site.title }} · 个人讨论归档</span><span>按标题和正文规则收录 · 图片使用原链接</span>{% if site.analytics_endpoint %}<span data-analytics-counts hidden></span>{% endif %}</footer>
     </div>
   </div>
   <button class="back-to-top" type="button" hidden>
@@ -37,6 +37,9 @@
     <span>回顶部</span>
   </button>
   <script src="{{ base_path }}/assets/browse.js" defer></script>
+  {% if site.analytics_endpoint %}
+  <script src="{{ base_path }}/assets/analytics.js" data-endpoint="{{ site.analytics_endpoint }}" data-origin="{{ site.analytics_origin }}" defer></script>
+  {% endif %}
   {% block scripts %}{% endblock %}
   {% if site.github_repository %}
   <div id="keyword-menu" class="keyword-menu" role="group" aria-label="加入标题和正文黑名单" hidden

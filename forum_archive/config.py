@@ -73,6 +73,8 @@ class Site:
     page_size: int = 20
     github_repository: str = ""
     github_branch: str = "main"
+    analytics_endpoint: str = ""
+    analytics_origin: str = ""
 
 
 @dataclass
@@ -101,6 +103,18 @@ class Settings:
             raise ValueError("site.github_repository 必须为 GitHub 的 owner/repo")
         if not site.github_branch.strip():
             raise ValueError("site.github_branch 不能为空")
+        for name in ("analytics_endpoint", "analytics_origin"):
+            value = getattr(site, name)
+            if not value:
+                continue
+            analytics_url = urlsplit(value)
+            origin = f"{analytics_url.scheme}://{analytics_url.netloc}"
+            if (not re.fullmatch(r"https://[A-Za-z0-9.-]+(?::[0-9]+)?|http://(?:localhost|127\.0\.0\.1)(?::[0-9]+)?", origin)
+                or analytics_url.query or analytics_url.fragment or any(char.isspace() for char in value)
+                or (name == "analytics_origin" and analytics_url.path)):
+                raise ValueError(f"site.{name} 必须是无账号密码、查询或片段的 HTTPS 网址；origin 不带路径（本机允许 HTTP）")
+        if site.analytics_endpoint and not site.analytics_origin:
+            raise ValueError("启用统计时必须设置 site.analytics_origin")
         parts = urlsplit(source.list_url)
         if parts.scheme not in {"http", "https"} or not parts.hostname or parts.username or parts.password:
             raise ValueError("source.list_url 必须是没有账号密码的 HTTP(S) 网址")

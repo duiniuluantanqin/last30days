@@ -1,6 +1,6 @@
 # 运行、测试与部署
 
-所有命令从仓库根目录执行。服务器及生产 Caddy 配置由用户自行维护，以下部署步骤仅供参考；本地验证不代表已部署。
+所有命令从仓库根目录执行。服务器基础环境及生产 Caddy 配置由用户自行维护，统计服务由独立工作流自动部署；本地验证不代表已部署。
 
 目录：
 
@@ -78,13 +78,17 @@ data/demo/archive.sqlite3        独立演示数据（不提交 Git）
 site/release-*/                  生成的公开网页（不提交 Git）
 site/current.json                本地当前版本指针
 scripts/remote.py                ECS 数据库恢复、备份与写回
+scripts/deploy-analytics.sh      ECS 统计服务安装、切换与失败回退
 deploy/Caddyfile.example         旧 ECS 网站的 Caddy 配置参考
+deploy/analytics.service.example 统计用户服务模板，由流水线填充部署目录
 AGENTS.md                       项目维护约束、代码入口和验证命令
 .agents/skills/forum-archive-maintainer/SKILL.md  项目专用维护技能
 tests/                          离线回归测试，不访问源站
 ```
 
 SQLite 包含结构化正文与状态，是权威归档，需要备份。公开版本只包含网页、CSS 与 JavaScript，不包含数据库、日志、密钥和下载的图片。每次构建到新目录，完成后原子切换版本指针，失败不会覆盖旧站点。
+
+启用自建访问统计时，ECS 额外保存 `state/analytics.sqlite3`，由常驻统计接口直接写入，独立于会被 Actions 替换的 `state/archive.sqlite3`。统计库不上传 Pages、不随文章过期清理，也不由 `remote.py restore/save-state` 同步；备份需单独安排，见下文。
 
 ## 测试
 
@@ -104,11 +108,11 @@ SQLite 包含结构化正文与状态，是权威归档，需要备份。公开�
 
 ## GitHub Actions 与 ECS 数据库（本地测试不会执行部署）
 
-网页仅发布到 GitHub Pages；ECS 只保存 SQLite 权威数据库，不再接收网页或切换网站入口。数据库仍然必需，保存原始正文、30 天归档、去重 ID、采集状态、今日分页游标、失败重试及 NEW 批次；Pages 文件和 Actions 缓存不能代替数据库。
+网页仅发布到 GitHub Pages；归档流水线在 ECS 只保存 SQLite 权威数据库，不再上传网页或切换网站入口。可选的 UV/PV 接口在 ECS 单独常驻运行。文章数据库仍然必需，保存原始正文、30 天归档、去重 ID、采集状态、今日分页游标、失败重试及 NEW 批次；Pages 文件和 Actions 缓存不能代替数据库。
 
 `test.yml` 在 push/PR 执行离线测试。`archive.yml` 在 `master` 分支每次 push 后只清理并保存已有数据（包括合并 PR）；每小时定时任务和手动触发均执行源站采集。手动运行入口为 **Actions → Hourly archive → Run workflow**，选择 `master` 后确认。定时任务只使用默认分支，可能延迟，不承诺严格准点。更换默认分支时同步修改工作流的 `push.branches` 和 Pages 分支限制。一次 push 包含多个 commit 时执行一次。
 
-继续使用现有 Ubuntu ECS 上的独立数据目录和**非 root 部署用户**，使其可读写 `/var/www/html/last30days/state` 和 `incoming`。GitHub Pages 发布无需将网站域名解析到 ECS，也无需新增 Caddy 站点。
+继续使用现有 Ubuntu ECS 上的独立数据目录和**非 root 部署用户**，使其可读写 `/var/www/html/last30days/state` 和 `incoming`。仅发布 GitHub Pages 无需将网站域名解析到 ECS；若启用下文的自建统计，额外为统计接口准备 ECS HTTPS 域名。
 
 在 GitHub 仓库配置这些 Secrets：
 
@@ -163,3 +167,78 @@ Pages 工作流只读取 ECS 的 `state/archive.sqlite3` 快照，使用当前 `
 .venv/Scripts/python.exe -X utf8 tests/browser_site_search.py
 .venv/Scripts/python.exe -X utf8 tests/browser_site_search.py --base-path /last30days
 ```
+
+## 自建 UV/PV 统计（可选）
+
+GitHub Pages 无法运行写库服务。项目自己的 `assets/analytics.js` 在页面打开、刷新或从浏览器后退缓存恢复时，向 ECS 的 `/api/analytics` 发送一个随机浏览器标识；接口写入 `state/analytics.sqlite3` 并返回计数，页脚显示今日和累计 UV/PV。无需 Umami、第三方统计 SDK、外部统计平台或新增 Python 依赖。
+
+PV 每打开一个完整页面加一，滚动预加载的 HTML、读取计数、修改搜索参数和接口预检不增加 PV。今日按北京时间划分；今日 UV 按当日不同浏览器标识去重，累计 UV 按全部历史不同标识去重，不能把每日 UV 相加。标识保存在站点的 localStorage 中，跨标签页复用；清理存储、更换浏览器或设备会成为新访客。浏览器禁用存储时仅计 PV。统计不会回填启用前的历史访问。
+
+请求只包含 `visitor`，不上传页面地址、搜索词、标题、正文、来源页或浏览器信息；统计库只保存日期、随机标识及 PV，不保存 IP，应用也不记录 HTTP 访问日志。接口按完整 Origin 放行且不使用 Cookie/登录凭据；Origin 校验不能阻止自行伪造 HTTP 请求，所以这些数字适合作为访问量参考。
+
+统计代码由 `.github/workflows/analytics.yml`（**Deploy analytics to ECS**）独立部署：相关 Python 代码、依赖、统计配置或部署脚本推送到 `master` 后自动运行，也可在 Actions 中选择该工作流和 `master` 手动运行。流程复用文章数据库部署的 `DEPLOY_HOST`、`DEPLOY_USER`、`DEPLOY_SSH_KEY`、`DEPLOY_KNOWN_HOSTS` Secrets 和 `DEPLOY_ROOT`、`DEPLOY_PORT` Variables，不需要新增 Secret。网页仍只由 Pages 发布，采集和数据库写回流程不变。
+
+首次启用：
+
+1. ECS 需要可用的 `python3`（3.11+）、对应的 venv 模块、systemd 和访问 Python 包源的网络。沿用现有非 root 部署用户，确保其能写入 `DEPLOY_ROOT`、`state/` 和自己的 `~/.config/systemd/user/`。管理员只需为该用户启用一次 linger，让用户服务在 SSH 退出后和系统重启后继续运行：
+
+   ```bash
+   # 将 archive 换成 DEPLOY_USER 对应的实际用户名。
+   sudo loginctl enable-linger archive
+   ```
+
+   流水线不会安装系统软件或执行 sudo；环境缺失会在切换旧服务前失败。若此前按旧模板安装过系统级 `forum-analytics.service`，需先执行 `sudo systemctl disable --now forum-analytics.service`，再运行流水线迁移到用户服务；统计库仍沿用原路径。
+2. 设置 `config.toml`：
+
+   ```toml
+   [site]
+   # 合并到已有 [site]，不要再建立第二个同名表。
+   analytics_endpoint = "https://stats.last30days.cn/api/analytics"
+   analytics_origin = "https://duiniuluantanqin.github.io"
+   ```
+
+   `analytics_origin` 只填 Pages 的来源（协议和域名，无末尾斜线或 `/last30days` 路径）；使用 Pages 自定义域名时填写实际来源。流水线从该配置生成 ECS 最小运行配置，不上传词库、文章数据或公开资源。仓库已填入上述统计地址；将 `analytics_endpoint` 设为空字符串即可关闭页面统计，此时部署工作流会拒绝部署且保留现有服务；配置的来源与当前页面不同也不会上报，本地演示始终关闭统计。
+3. 将 `stats.last30days.cn` 解析到 ECS。参考 `deploy/analytics.Caddyfile.example`，在用户维护的 Caddy 配置中增加统计域名的独立 HTTPS 反向代理块，仅转发 `/api/analytics` 到 `127.0.0.1:3030`。不要把 `state/` 暴露给 `file_server`，也不要覆盖已有 Caddy 配置。浏览器中的 Pages 是 HTTPS，统计接口也必须使用有效 HTTPS 证书；3030 只监听本机。
+4. 将代码推送到 `master`，或在 **Actions → Deploy analytics to ECS → Run workflow** 手动运行。无需手动上传 Python 或安装服务：工作流先运行统计和部署回退测试，再复用 SSH 连接上传 Python 包、最小配置和用户服务模板，创建独立 venv 并安装依赖，自动注册、启用和重启 `forum-analytics.service`。本机 GET/CORS 检查失败会恢复上个代码版本和服务模板；首次启动失败会停用新服务。公网 HTTPS 检查另行执行，若仅该步骤失败，应检查域名、证书和 Caddy，本机已成功部署的服务会保留。
+5. 使用以下只读请求检查来源、CORS 与数据库连接；GET 不会增加计数：
+
+   ```bash
+   curl -i https://stats.last30days.cn/api/analytics \
+     -H 'Origin: https://duiniuluantanqin.github.io'
+   ```
+
+   然后推送配置并通过现有 Pages 工作流发布，打开网站检查页脚。首次访问应为 UV/PV 各 1，同一浏览器刷新只增加 PV。接口离线时隐藏计数，阅读、搜索和导航继续工作。若用户另设 CSP，需在 `connect-src` 中加入统计接口来源；本地预览会按配置自动加入。
+
+默认 ECS 目录（使用自定义 `DEPLOY_ROOT` 时随之变化）：
+
+```text
+/var/www/html/last30days/
+  analytics/releases/analytics-<编号>/  每次部署的代码、配置和独立 .venv
+  analytics/active                     当前统计服务代码软链接，与旧网站 current 无关
+  incoming/analytics-<编号>.tar.gz      统计代码上传包
+  state/analytics.sqlite3              持续写入的统计库，不随代码更新替换
+```
+
+服务配置位于部署用户的 `~/.config/systemd/user/forum-analytics.service`。在该用户的 SSH 会话中运行 `systemctl --user status forum-analytics --no-pager` 查看状态，使用 `journalctl --user -u forum-analytics -n 50 --no-pager` 查看启动错误。代码版本和上传包保留以便排错，不自动删除。部署统计服务不上传网页、不切换旧网站 `current`，不读取或覆盖文章数据库，也不上传本地统计库。
+
+统计数据库不会被采集上传替换，也不属于文章库的滚动备份。服务运行时请使用 SQLite backup API 创建一致的备份，避免直接复制写入中的文件。例如在 ECS 执行以下 Python（备份路径需有写入权限）：
+
+```python
+from contextlib import closing
+import sqlite3
+
+with closing(sqlite3.connect("/var/www/html/last30days/state/analytics.sqlite3")) as source:
+    with closing(sqlite3.connect("/var/www/html/last30days/state/analytics.sqlite3.bak")) as target:
+        source.backup(target)
+```
+
+本地离线与浏览器验证都使用临时数据库，不访问 ECS 或公开统计接口：
+
+```powershell
+.venv/Scripts/python.exe -X utf8 -m unittest discover -s tests -p test_analytics.py -v
+.venv/Scripts/python.exe -X utf8 -m unittest discover -s tests -p test_analytics_deploy.py -v
+.venv/Scripts/python.exe -X utf8 tests/browser_analytics.py
+.venv/Scripts/python.exe -X utf8 tests/browser_analytics.py --http-origin
+```
+
+浏览器检查包含真实跨域预检/POST、刷新与多标签 UV 去重、新浏览器、禁用存储、预加载不计数、项目路径、普通 HTTP 来源、手机布局、接口离线及非发布来源不计数。

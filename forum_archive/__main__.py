@@ -18,7 +18,8 @@ from .store import Store
 
 def demo_settings(settings: Settings) -> Settings:
     return replace(settings, source=Source("https://example.com/thread0806.php?fid=7"),
-                   site=replace(settings.site, subtitle="本地演示 · 非真实采集", description="用于检查排版的本地示例内容。", page_size=5),
+                   site=replace(settings.site, subtitle="本地演示 · 非真实采集", description="用于检查排版的本地示例内容。", page_size=5,
+                                analytics_endpoint=""),
                    database=settings.root / "data/demo/archive.sqlite3", output=settings.root / "site/demo")
 
 
@@ -53,6 +54,10 @@ def parser():
     collect.add_argument("--recent-pages", type=int, help="本次最近列表扫描页数")
     collect.add_argument("--retry-failed", action="store_true", help="重置已耗尽的正文重试次数")
     commands.add_parser("demo", help="生成独立演示数据，不访问来源站点")
+    analytics = commands.add_parser("analytics", help="启动自建 UV/PV 统计接口（数据库独立于文章归档）")
+    analytics.add_argument("--host", default="127.0.0.1")
+    analytics.add_argument("--port", type=int, default=3030)
+    analytics.add_argument("--database", required=True, help="统计 SQLite 路径，不能与文章数据库相同")
     for name, help_text in (("build", "从已保存内容重新生成网站"), ("status", "查看采集进度"), ("serve", "启动本地预览")):
         command = commands.add_parser(name, help=help_text)
         command.add_argument("--demo", action="store_true", help="使用独立演示数据")
@@ -92,6 +97,12 @@ def main(argv=None):
             if getattr(args, "path_file", None):
                 Path(args.path_file).write_text(str(release.resolve()), encoding="utf-8")
             print(f"网站已生成：{release}")
+        elif args.command == "analytics":
+            from .analytics import serve_analytics
+            database = Path(args.database).resolve()
+            if database == settings.database.resolve():
+                raise ValueError("统计数据库不能与会被采集任务替换的文章数据库相同")
+            serve_analytics(database, settings.site.analytics_origin, args.host, args.port)
         elif args.command == "serve":
             if args.reload:
                 from .preview import serve_reload

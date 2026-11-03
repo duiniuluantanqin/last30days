@@ -1,0 +1,11 @@
+# Add this separate block to your existing Caddyfile.
+# Keep the SQLite state directory outside every file_server root.
+stats.last30days.cn {
+    @analytics path /api/analytics
+    handle @analytics {
+        reverse_proxy 127.0.0.1:3030
+    }
+    handle {
+        respond 404
+    }
+}

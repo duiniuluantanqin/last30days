@@ -536,7 +536,7 @@ class ArchiveTests(unittest.TestCase):
         self.assertNotIn("新增广告词讨论", (second / "index.html").read_text(encoding="utf-8"))
 
     def test_keyword_menu_has_safe_repository_configuration(self):
-        self.settings.site = replace(self.settings.site, github_repository="example/archive", github_branch="feature/rules")
+        self.settings.site = replace(self.settings.site, github_repository="example/archive", github_branch="feature/rules", analytics_endpoint="")
         self.settings.filters = TitleFilter(["原有词", "</div><script>bad()</script>"])
         release = build(self.settings, now=NOW)
         page = BeautifulSoup((release / "index.html").read_text(encoding="utf-8"), "html.parser")
@@ -568,7 +568,7 @@ class ArchiveTests(unittest.TestCase):
         self.assertFalse((first / "posts/101.html").exists())
 
     def test_keyword_menu_is_absent_without_repository(self):
-        self.settings.site = replace(self.settings.site, github_repository="")
+        self.settings.site = replace(self.settings.site, github_repository="", analytics_endpoint="")
         release = build(self.settings, now=NOW)
         page = BeautifulSoup((release / "index.html").read_text(encoding="utf-8"), "html.parser")
         self.assertIsNone(page.select_one("#keyword-menu"))

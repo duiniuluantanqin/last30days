@@ -27,6 +27,7 @@ description: 维护本仓库的论坛采集、标题与正文黑名单、图片�
 - 流水线采集由 `schedule` 和 `workflow_dispatch` 事件执行；两者均先恢复 ECS 状态、重筛、构建并执行 `remote.py save-state`，再采集、构建和保存状态。push 事件只清理并保存已有数据，合并关键词 PR 不触发源站采集。ECS 仅用于数据库持久化，不再自动上传网页、切换入口或清理旧网站。
 - 网页仅由独立的 `pages.yml` 发布到 GitHub Pages，在 Hourly archive 结束后（包括采集失败）或手动触发时只读恢复 ECS 数据库、重筛和发布，不重复采集或写回 ECS。通过 `build --base-path` 适配项目站点前缀；默认构建仍使用根路径。只上传当次公开版本目录，设置与验证见运维说明。
 - 数据库备份：`remote.py save-state` 在替换前滚动备份旧状态到 `state/archive.sqlite3.bak`，备份失败不得替换当前状态。保存成功后清理 `incoming/` 中超过 24 小时的已知数据库暂存文件，不删除状态目录，不遍历软链接或无关文件。`remote.py publish`、`purge-blocked.sh` 和 `prune-deployments.sh` 保留为旧 ECS 网站的手动工具，流水线不调用。相关真实 shell 与模拟保存测试在 `tests/test_deployment_retention.py`。
+- 自建 UV/PV：检查 `analytics.py`、`static/analytics.js`、`templates/base.html` 和 `site.analytics_*` 配置。统计接口在 ECS 常驻，使用独立的 `state/analytics.sqlite3`，不可放进会整库替换的文章数据库或 Pages。`analytics.yml` 复用已有 SSH Secrets，通过 `remote.py deploy-analytics` 和 `deploy-analytics.sh` 自动部署 systemd 用户服务；ECS 预先启用部署用户的 linger。只切换统计代码，本机检查失败恢复旧服务，Caddy 仍由用户维护。北京时间按日去重 UV，累计 UV 跨日去重；预加载和 GET 不计 PV，演示与非发布来源不计数。验证 `tests/test_analytics.py`、`tests/test_analytics_deploy.py`、`tests/browser_analytics.py` 及其 `--http-origin` 模式；部署和独立备份见运维说明。
 
 ## 验证
 

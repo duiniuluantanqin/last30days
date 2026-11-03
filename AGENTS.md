@@ -31,6 +31,8 @@
 - `forum_archive/source.py`：页面解析、主帖提取、HTML 清理。
 - `forum_archive/config.py`、`store.py`、`crawler.py`：规则加载、历史重筛、去重和采集。
 - `forum_archive/site.py`、`templates/`、`static/`：构建、图片展示、本地预览及 Block 菜单。
+- `forum_archive/analytics.py`、`static/analytics.js`：可选自建 UV/PV 接口和页脚计数；ECS 独立 `state/analytics.sqlite3`，不参与文章数据库替换或 Pages 上传。
+- `.github/workflows/analytics.yml`、`scripts/deploy-analytics.sh`：复用 ECS SSH Secrets 自动部署统计代码和 systemd 用户服务；只切换统计代码，失败恢复旧服务，不修改 Caddy、数据库或旧网站入口。
 - `scripts/remote.py`、`.github/workflows/`：ECS 数据库恢复、备份、写回与 GitHub Pages 发布。`remote.py publish` 及两个清理脚本保留为旧 ECS 网站的手动工具，流水线不调用。
 - 维护这些功能时参考项目技能：[forum-archive-maintainer](.agents/skills/forum-archive-maintainer/SKILL.md)。
 

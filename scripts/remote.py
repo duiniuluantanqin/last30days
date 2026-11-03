@@ -1,7 +1,8 @@
-"""Restore/save SQLite state over SSH, with legacy full-site publishing kept for manual use."""
+"""Manage ECS archive state and deploy analytics over SSH; legacy website publishing is manual."""
 
 import argparse
 from datetime import datetime
+import json
 import os
 from pathlib import Path, PurePosixPath
 import re
@@ -133,10 +134,40 @@ class Remote:
         self.execute(" && ".join(commands), check=True)
         print("已保存 ECS 数据库并滚动备份；网页由 GitHub Pages 发布。")
 
+    def deploy_analytics(self, settings: Settings):
+        if not settings.site.analytics_endpoint or not settings.site.analytics_origin:
+            raise ValueError("部署统计服务前需要设置 site.analytics_endpoint 和 site.analytics_origin")
+        project = Path(__file__).resolve().parents[1]
+        directory = Path(".cache/deploy")
+        directory.mkdir(parents=True, exist_ok=True)
+        identifier = f"analytics-{time.time_ns()}"
+        archive = directory / f"{identifier}.tar.gz"
+        config = directory / "analytics-config.toml"
+        # The service doesn't need blacklist files, crawler state or public assets.
+        config.write_text('[source]\nlist_url = ' + json.dumps(settings.source.list_url) +
+                          '\n[site]\nanalytics_origin = ' + json.dumps(settings.site.analytics_origin) +
+                          '\nanalytics_endpoint = ' + json.dumps(settings.site.analytics_endpoint) + '\n', encoding="utf-8")
+        unit = directory / "analytics.service"
+        unit.write_text((project / "deploy/analytics.service.example").read_text(encoding="utf-8")
+                        .replace("@DEPLOY_ROOT@", self.root), encoding="utf-8", newline="\n")
+        with tarfile.open(archive, "w:gz") as bundle:
+            for path in [project / "pyproject.toml", *sorted((project / "forum_archive").glob("*.py"))]:
+                if path.is_symlink():
+                    raise ValueError("统计部署代码不能包含符号链接")
+                bundle.add(path, arcname=path.relative_to(project).as_posix(), recursive=False)
+            bundle.add(config, arcname="config.toml", recursive=False)
+            bundle.add(unit, arcname="analytics.service", recursive=False)
+        self.execute(f"mkdir -p {self.root}/incoming", check=True)
+        self.upload(archive, f"{self.root}/incoming/{identifier}.tar.gz")
+        script = (project / "scripts/deploy-analytics.sh").read_text(encoding="utf-8")
+        command = f"sh -s -- {shlex.quote(self.root)} {identifier} {shlex.quote(settings.site.analytics_origin)}"
+        self.execute(command, input=script, text=True, check=True)
+        print("已部署 ECS 统计服务并通过本机检查；UV/PV 数据库保持独立持久化。")
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["restore", "save-state", "publish"])
+    parser.add_argument("command", choices=["restore", "save-state", "publish", "deploy-analytics"])
     parser.add_argument("--config", default="config.toml")
     parser.add_argument("--release-file", default=".cache/release.txt")
     args = parser.parse_args()
@@ -146,6 +177,8 @@ def main():
         remote.restore(settings)
     elif args.command == "save-state":
         remote.save_state(settings)
+    elif args.command == "deploy-analytics":
+        remote.deploy_analytics(settings)
     else:
         remote.publish(settings, Path(Path(args.release_file).read_text(encoding="utf-8").strip()))
 

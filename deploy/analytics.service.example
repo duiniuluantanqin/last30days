@@ -1,0 +1,12 @@
+[Unit]
+Description=Forum archive UV/PV counters
+
+[Service]
+# User service: the deployment workflow replaces @DEPLOY_ROOT@ automatically.
+WorkingDirectory=@DEPLOY_ROOT@/analytics/active
+ExecStart=@DEPLOY_ROOT@/analytics/active/.venv/bin/python -m forum_archive --config @DEPLOY_ROOT@/analytics/active/config.toml analytics --database @DEPLOY_ROOT@/state/analytics.sqlite3 --host 127.0.0.1 --port 3030
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
